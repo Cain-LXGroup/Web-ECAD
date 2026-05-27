@@ -6,6 +6,7 @@ export const MAX_EDITOR_HISTORY = 50;
 
 export type EditorHistorySnapshot = {
   project: SchematicProject;
+  activeSheetId?: string;
   selectedIds: string[];
   selectedWireNode?: WireNodeSelection;
   wireDraft?: WireDraftState;
@@ -20,6 +21,7 @@ export const cloneEditorHistorySnapshot = (snapshot: EditorHistorySnapshot): Edi
 
   return {
     project: structuredClone(snapshot.project),
+    activeSheetId: snapshot.activeSheetId,
     selectedIds: [...snapshot.selectedIds],
     selectedWireNode: snapshot.selectedWireNode
       ? { ...snapshot.selectedWireNode }
