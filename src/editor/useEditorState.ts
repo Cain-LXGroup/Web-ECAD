@@ -16,6 +16,7 @@ import {
   normalizeWirePoints,
   resolveWireConnectionPoint,
   routeOrthogonalSegment,
+  type AutoRouteContext,
 } from "./wireRouting";
 import {
   cloneEditorHistorySnapshot,
@@ -108,6 +109,21 @@ export const useEditorState = (
         wires: nextProject.wires.map((wire) => applyWireConnections(wire, nextProject, symbolIndex)),
       };
     },
+    [symbolIndex],
+  );
+
+  const getAutoRouteContext = useCallback(
+    (
+      currentProject: SchematicProject,
+      startConnection?: WireConnection,
+      endConnection?: WireConnection,
+    ): AutoRouteContext => ({
+      project: currentProject,
+      symbolIndex,
+      gridSize: currentProject.gridSize ?? DEFAULT_GRID_SIZE,
+      startConnection,
+      endConnection,
+    }),
     [symbolIndex],
   );
 
@@ -248,7 +264,15 @@ export const useEditorState = (
       if (currentDraft.routingMode === "auto") {
         return {
           ...currentDraft,
-          points: buildAutoRoute(currentDraft.points[0], nextAnchor.point),
+          points: buildAutoRoute(
+            currentDraft.points[0],
+            nextAnchor.point,
+            getAutoRouteContext(
+              currentProject,
+              currentDraft.startConnection,
+              nextAnchor.connection,
+            ),
+          ),
           endConnection: nextAnchor.connection,
           endWireId: nextAnchor.wireId,
         };
@@ -261,7 +285,7 @@ export const useEditorState = (
         endWireId: nextAnchor.wireId,
       };
     },
-    [resolveWireAnchor],
+    [getAutoRouteContext, resolveWireAnchor],
   );
 
   const canUndo = historyPast.length > 0;
@@ -408,7 +432,15 @@ export const useEditorState = (
             routingMode: nextWireRoutingMode,
             points:
               nextWireRoutingMode === "auto"
-                ? buildAutoRoute(startPoint, endPoint)
+                ? buildAutoRoute(
+                    startPoint,
+                    endPoint,
+                    getAutoRouteContext(
+                      project,
+                      currentDraft.startConnection,
+                      currentDraft.endConnection,
+                    ),
+                  )
                 : normalizeWirePoints(currentDraft.points),
           };
         });
@@ -734,7 +766,11 @@ export const useEditorState = (
       const nextAnchor = resolveWireAnchor(point, project);
 
       if (wireDraft.routingMode === "auto") {
-        return buildAutoRoute(wireDraft.points[0], nextAnchor.point);
+        return buildAutoRoute(
+          wireDraft.points[0],
+          nextAnchor.point,
+          getAutoRouteContext(project, wireDraft.startConnection, nextAnchor.connection),
+        );
       }
 
       return routeOrthogonalSegment(wireDraft.points, nextAnchor.point);

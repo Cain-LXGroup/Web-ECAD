@@ -6,6 +6,9 @@ import type {
   Wire,
   WireConnection,
 } from "../library/types";
+import { buildObstacleAwareAutoRoute, type AutoRouteContext } from "./wireObstacleRoute";
+
+export type { AutoRouteContext } from "./wireObstacleRoute";
 
 const dedupeConsecutivePoints = (points: Point[]): Point[] => {
   console.info("[wireRouting] Deduplicating consecutive points", { pointCount: points.length });
@@ -92,7 +95,7 @@ const rotatePoint = (point: Point, rotation: SymbolInstance["rotation"]): Point 
   }
 };
 
-const transformSymbolPointToCanvas = (instance: SymbolInstance, localPoint: Point): Point => {
+export const transformSymbolPointToCanvas = (instance: SymbolInstance, localPoint: Point): Point => {
   console.info("[wireRouting] Transforming symbol-local point to canvas", {
     instanceId: instance.id,
     localPoint,
@@ -277,9 +280,7 @@ export const findNearestWireSegmentPoint = (
   };
 };
 
-export const buildAutoRoute = (startPoint: Point, endPoint: Point): Point[] => {
-  console.info("[wireRouting] Building auto-routed wire path", { startPoint, endPoint });
-
+const buildSimpleAutoRoute = (startPoint: Point, endPoint: Point): Point[] => {
   if (startPoint.x === endPoint.x || startPoint.y === endPoint.y) {
     return [startPoint, endPoint];
   }
@@ -306,6 +307,24 @@ export const buildAutoRoute = (startPoint: Point, endPoint: Point): Point[] => {
     },
     endPoint,
   ]);
+};
+
+export const buildAutoRoute = (
+  startPoint: Point,
+  endPoint: Point,
+  context?: AutoRouteContext,
+): Point[] => {
+  console.info("[wireRouting] Building auto-routed wire path", {
+    startPoint,
+    endPoint,
+    obstacleAware: Boolean(context),
+  });
+
+  if (context && context.project.symbols.length > 0) {
+    return buildObstacleAwareAutoRoute(startPoint, endPoint, context);
+  }
+
+  return buildSimpleAutoRoute(startPoint, endPoint);
 };
 
 const applyManualStartConnection = (points: Point[], nextStartPoint: Point): Point[] => {
@@ -388,7 +407,13 @@ export const applyWireConnections = (
 
     return {
       ...nextWire,
-      points: buildAutoRoute(startPoint, endPoint),
+      points: buildAutoRoute(startPoint, endPoint, {
+        project,
+        symbolIndex,
+        gridSize: project.gridSize ?? 50,
+        startConnection: wire.startConnection,
+        endConnection: wire.endConnection,
+      }),
     };
   }
 
