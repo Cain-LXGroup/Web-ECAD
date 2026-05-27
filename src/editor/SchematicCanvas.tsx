@@ -13,6 +13,8 @@ import {
 } from "react";
 
 import type { LibrarySymbol, Point, SchematicProject, WireConnection } from "../library/types";
+import { isNetHighlighted, type NetHighlightSet } from "./netHighlight";
+import type { SelectionMode } from "./useEditorState";
 import { LabelView } from "./LabelView";
 import { DEFAULT_GRID_SIZE } from "./snapping";
 import { SymbolInstanceView } from "./SymbolInstanceView";
@@ -74,6 +76,7 @@ type SchematicCanvasProps = {
   project: SchematicProject;
   symbolIndex: Record<string, LibrarySymbol>;
   selectedIds: string[];
+  netHighlight?: NetHighlightSet;
   selectedWireNode?: WireNodeSelection;
   activeTool: Tool;
   placingSymbolId?: string;
@@ -82,7 +85,7 @@ type SchematicCanvasProps = {
   getWirePreviewPoints?: (point: Point) => Point[] | undefined;
   zoom: number;
   pan: Point;
-  onSelectObject: (id: string) => void;
+  onSelectObject: (id: string, mode?: SelectionMode) => void;
   onClearSelection: () => void;
   onSelectWireNode: (wireId: string, pointIndex: number) => void;
   onMoveWireNode: (point: Point) => void;
@@ -146,6 +149,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     project,
     symbolIndex,
     selectedIds,
+    netHighlight,
     selectedWireNode,
     activeTool,
     placingSymbolId,
@@ -480,6 +484,21 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     setMeasureLabel(formatMeasureLabel(canvasPoint, canvasPoint));
   };
 
+  const resolveSelectionMode = (
+    id: string,
+    event: ReactPointerEvent<SVGElement>,
+  ): SelectionMode => {
+    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+      return "add";
+    }
+
+    if (selectedIds.includes(id) && selectedIds.length > 1) {
+      return "toggle";
+    }
+
+    return "replace";
+  };
+
   const beginSelectionDrag = (id: string, event: ReactPointerEvent<SVGElement>) => {
     console.info("[SchematicCanvas] Beginning selection drag", { id });
 
@@ -492,7 +511,12 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
-    onSelectObject(id);
+    const selectionMode = resolveSelectionMode(id, event);
+    if (selectionMode === "toggle") {
+      return;
+    }
+
+    onSelectObject(id, selectionMode);
     event.stopPropagation();
     capturePointerOnSvg(event);
     stopInertia();
@@ -979,6 +1003,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             key={wire.id}
             wire={wire}
             selected={selectedIds.includes(wire.id)}
+            netHighlighted={netHighlight ? isNetHighlighted(netHighlight, "wire", wire.id) : false}
             onPointerDown={(event) => beginSelectionDrag(wire.id, event)}
             onLongPress={handleObjectLongPress(wire.id, "wire")}
           />
@@ -1006,6 +1031,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             variant="net-label"
             schematicTextSize={schematicTextSize}
             selected={selectedIds.includes(label.id)}
+            netHighlighted={netHighlight ? isNetHighlighted(netHighlight, "label", label.id) : false}
             onPointerDown={(event) => beginSelectionDrag(label.id, event)}
             onLongPress={handleObjectLongPress(label.id, "net-label")}
           />
