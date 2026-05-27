@@ -383,11 +383,6 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
-    if (fingerPansOnly && event.pointerType === "touch") {
-      console.info("[SchematicCanvas] Ignoring object touch drag to allow finger pan", { id });
-      return;
-    }
-
     const canvasPoint = getCanvasPoint(event);
     if (!canvasPoint) {
       return;
