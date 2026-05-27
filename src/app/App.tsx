@@ -135,8 +135,11 @@ function App() {
   useEditorKeyboardShortcuts({
     onSetTool: editor.setTool,
     onDeleteSelected: () => {
+      const hadWireNode = Boolean(editor.state.selectedWireNode);
       editor.deleteSelected();
-      setStatusMessage("Deleted the selected object.");
+      setStatusMessage(
+        hadWireNode ? "Removed the wire corner." : "Deleted the selected object.",
+      );
     },
     onCancelWire: () => {
       editor.cancelWire();
@@ -783,10 +786,12 @@ function App() {
         fingerPansOnly={appSettings.fingerPansOnly}
         soundEnabled={appSettings.soundEnabled}
         wireRouteClearance={appSettings.wireRouteClearance}
+        schematicTextSize={appSettings.schematicTextSize}
         colorScheme={appSettings.colorScheme}
         onFingerPansOnlyChange={appSettings.setFingerPansOnly}
         onSoundEnabledChange={appSettings.setSoundEnabled}
         onWireRouteClearanceChange={appSettings.setWireRouteClearance}
+        onSchematicTextSizeChange={appSettings.setSchematicTextSize}
         onColorSchemeChange={appSettings.setColorScheme}
       />
       <ExportPanel
@@ -872,14 +877,20 @@ function App() {
             project={editor.state.project}
             symbolIndex={symbolIndex}
             selectedIds={editor.state.selectedIds}
+            selectedWireNode={editor.state.selectedWireNode}
             activeTool={editor.state.activeTool}
             placingSymbolId={editor.state.placingSymbolId}
             wireDraft={editor.state.wireDraft}
+            schematicTextSize={appSettings.schematicTextSize}
             getWirePreviewPoints={editor.getWirePreviewPoints}
             zoom={editor.state.zoom}
             pan={editor.state.pan}
             onSelectObject={editor.selectObject}
             onClearSelection={editor.clearSelection}
+            onSelectWireNode={editor.selectWireNode}
+            onMoveWireNode={editor.moveWireNode}
+            onCommitWireNodeEdit={editor.commitWireNodeEdit}
+            onRemoveWireNodeAt={editor.removeWireNodeAt}
             onMoveSelected={editor.moveSelected}
             onSnapSelectedToGrid={editor.snapSelectedToGrid}
             onPlaceSymbol={(symbolId, point) => {
@@ -948,6 +959,7 @@ function App() {
             hidden={isFloatingChromeHidden}
             canUndo={editor.canUndo}
             canRedo={editor.canRedo}
+            theme={appSettings.colorScheme}
             onUndo={() => {
               editor.undo();
               setStatusMessage("Undid the last action.");

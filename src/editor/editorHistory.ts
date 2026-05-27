@@ -1,11 +1,13 @@
 import type { SchematicProject } from "../library/types";
 import type { WireDraftState } from "./useEditorState";
+import type { WireNodeSelection } from "./WireNodeHandles";
 
 export const MAX_EDITOR_HISTORY = 50;
 
 export type EditorHistorySnapshot = {
   project: SchematicProject;
   selectedIds: string[];
+  selectedWireNode?: WireNodeSelection;
   wireDraft?: WireDraftState;
   placingSymbolId?: string;
 };
@@ -19,6 +21,9 @@ export const cloneEditorHistorySnapshot = (snapshot: EditorHistorySnapshot): Edi
   return {
     project: structuredClone(snapshot.project),
     selectedIds: [...snapshot.selectedIds],
+    selectedWireNode: snapshot.selectedWireNode
+      ? { ...snapshot.selectedWireNode }
+      : undefined,
     wireDraft: snapshot.wireDraft ? structuredClone(snapshot.wireDraft) : undefined,
     placingSymbolId: snapshot.placingSymbolId,
   };

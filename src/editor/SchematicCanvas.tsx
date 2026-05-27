@@ -16,9 +16,11 @@ import type { LibrarySymbol, Point, SchematicProject, WireConnection } from "../
 import { LabelView } from "./LabelView";
 import { DEFAULT_GRID_SIZE } from "./snapping";
 import { SymbolInstanceView } from "./SymbolInstanceView";
+import { DEFAULT_SCHEMATIC_TEXT_SIZE } from "./schematicTextSizing";
 import type { Tool, WireDraftState } from "./useEditorState";
 import { getWireJunctionPoints } from "./wireRouting";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { WireNodeHandles, type WireNodeSelection } from "./WireNodeHandles";
 import { WireView } from "./WireView";
 import {
   getPinchMetrics,
@@ -45,13 +47,14 @@ type CanvasTapAction =
 
 type DragState = {
   pointerId: number;
-  mode: "move-selection" | "pan" | "canvas-gesture";
+  mode: "move-selection" | "move-wire-node" | "pan" | "canvas-gesture";
   lastClient: Point;
   lastWorld: Point;
   startClient: Point;
   originWorld: Point;
   isPanning: boolean;
   tapAction?: CanvasTapAction;
+  wireNode?: WireNodeSelection;
 };
 
 type PinchGestureState = {
@@ -71,14 +74,20 @@ type SchematicCanvasProps = {
   project: SchematicProject;
   symbolIndex: Record<string, LibrarySymbol>;
   selectedIds: string[];
+  selectedWireNode?: WireNodeSelection;
   activeTool: Tool;
   placingSymbolId?: string;
   wireDraft?: WireDraftState;
+  schematicTextSize?: number;
   getWirePreviewPoints?: (point: Point) => Point[] | undefined;
   zoom: number;
   pan: Point;
   onSelectObject: (id: string) => void;
   onClearSelection: () => void;
+  onSelectWireNode: (wireId: string, pointIndex: number) => void;
+  onMoveWireNode: (point: Point) => void;
+  onCommitWireNodeEdit: () => void;
+  onRemoveWireNodeAt: (wireId: string, pointIndex: number) => void;
   onMoveSelected: (dx: number, dy: number) => void;
   onSnapSelectedToGrid: () => void;
   onPlaceSymbol: (symbolId: string, point: Point) => void;
@@ -137,14 +146,20 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     project,
     symbolIndex,
     selectedIds,
+    selectedWireNode,
     activeTool,
     placingSymbolId,
     wireDraft,
+    schematicTextSize = DEFAULT_SCHEMATIC_TEXT_SIZE,
     getWirePreviewPoints,
     zoom,
     pan,
     onSelectObject,
     onClearSelection,
+    onSelectWireNode,
+    onMoveWireNode,
+    onCommitWireNodeEdit,
+    onRemoveWireNodeAt,
     onMoveSelected,
     onSnapSelectedToGrid,
     onPlaceSymbol,
@@ -431,6 +446,40 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     return `Δ ${gridUnitsX} × ${gridUnitsY} grid`;
   };
 
+  const beginWireNodeDrag = (
+    wireId: string,
+    pointIndex: number,
+    event: ReactPointerEvent<SVGCircleElement>,
+  ) => {
+    console.info("[SchematicCanvas] Beginning wire node drag", { wireId, pointIndex });
+
+    if (activeTool !== "select" || placingSymbolId || pinchGestureRef.current || wireDraft) {
+      return;
+    }
+
+    const canvasPoint = getCanvasPoint(event);
+    if (!canvasPoint) {
+      return;
+    }
+
+    onSelectWireNode(wireId, pointIndex);
+    event.stopPropagation();
+    capturePointerOnSvg(event);
+    stopInertia();
+    setDragLastClient({ x: event.clientX, y: event.clientY });
+    setDragState({
+      pointerId: event.pointerId,
+      mode: "move-wire-node",
+      lastClient: { x: event.clientX, y: event.clientY },
+      lastWorld: canvasPoint,
+      startClient: { x: event.clientX, y: event.clientY },
+      originWorld: canvasPoint,
+      isPanning: true,
+      wireNode: { wireId, pointIndex },
+    });
+    setMeasureLabel(formatMeasureLabel(canvasPoint, canvasPoint));
+  };
+
   const beginSelectionDrag = (id: string, event: ReactPointerEvent<SVGElement>) => {
     console.info("[SchematicCanvas] Beginning selection drag", { id });
 
@@ -650,6 +699,26 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
+    if (dragState.mode === "move-wire-node") {
+      const canvasPoint = getCanvasPoint(event);
+      if (!canvasPoint) {
+        return;
+      }
+
+      onMoveWireNode(canvasPoint);
+      setMeasureLabel(formatMeasureLabel(dragState.originWorld, canvasPoint));
+      setDragState((currentDragState) =>
+        currentDragState
+          ? {
+              ...currentDragState,
+              lastClient: { x: event.clientX, y: event.clientY },
+              lastWorld: canvasPoint,
+            }
+          : currentDragState,
+      );
+      return;
+    }
+
     const shouldPanCanvas =
       dragState.mode === "canvas-gesture" &&
       (dragState.isPanning ||
@@ -707,6 +776,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
     if (dragState.mode === "move-selection") {
       onSnapSelectedToGrid();
+    } else if (dragState.mode === "move-wire-node") {
+      onCommitWireNodeEdit();
     } else if (wasPanGesture) {
       startInertia();
     } else if (dragState.mode === "canvas-gesture") {
@@ -825,6 +896,13 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     () => getWireJunctionPoints(project.wires),
     [project.wires],
   );
+  const showWireNodeHandles =
+    !wireDraft &&
+    (activeTool === "select" || activeTool === "wire") &&
+    selectedIds.some((id) => project.wires.some((wire) => wire.id === id));
+  const wiresWithNodeHandles = showWireNodeHandles
+    ? project.wires.filter((wire) => selectedIds.includes(wire.id))
+    : [];
   const worldFillRect = useMemo(
     () =>
       getWorldFillRect(
@@ -926,6 +1004,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             key={label.id}
             item={label}
             variant="net-label"
+            schematicTextSize={schematicTextSize}
             selected={selectedIds.includes(label.id)}
             onPointerDown={(event) => beginSelectionDrag(label.id, event)}
             onLongPress={handleObjectLongPress(label.id, "net-label")}
@@ -937,6 +1016,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             key={note.id}
             item={note}
             variant="text-note"
+            schematicTextSize={schematicTextSize}
             selected={selectedIds.includes(note.id)}
             onPointerDown={(event) => beginSelectionDrag(note.id, event)}
             onLongPress={handleObjectLongPress(note.id, "text-note")}
@@ -954,6 +1034,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
               key={instance.id}
               symbol={symbol}
               instance={instance}
+              schematicTextSize={schematicTextSize}
               selected={selectedIds.includes(instance.id)}
               onPointerDown={(event) => beginSelectionDrag(instance.id, event)}
               onLongPress={handleObjectLongPress(instance.id, "symbol")}
@@ -970,6 +1051,16 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             />
           );
         })}
+
+        {wiresWithNodeHandles.map((wire) => (
+          <WireNodeHandles
+            key={`${wire.id}-nodes`}
+            wire={wire}
+            selectedNode={selectedWireNode}
+            onNodePointerDown={(pointIndex, event) => beginWireNodeDrag(wire.id, pointIndex, event)}
+            onNodeDoubleClick={(pointIndex) => onRemoveWireNodeAt(wire.id, pointIndex)}
+          />
+        ))}
       </svg>
 
       <CanvasHud measureLabel={measureLabel} />

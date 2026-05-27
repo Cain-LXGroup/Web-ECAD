@@ -28,6 +28,12 @@ import { getProjectBounds, getSelectionBounds } from "./projectBounds";
 import { DEFAULT_GRID_SIZE, snapPoint } from "./snapping";
 import { normalizeRotation, toggleMirror } from "./transforms";
 import { getViewportForBounds } from "./viewportFitting";
+import {
+  finalizeWireEndpointAnchors,
+  removeWirePointAtIndex,
+  updateWirePointPosition,
+} from "./wireEditing";
+import type { WireNodeSelection } from "./WireNodeHandles";
 
 export type Tool = "select" | "wire" | "label" | "text";
 
@@ -43,6 +49,7 @@ export type WireDraftState = {
 export type EditorState = {
   project: SchematicProject;
   selectedIds: string[];
+  selectedWireNode?: WireNodeSelection;
   activeTool: Tool;
   zoom: number;
   pan: Point;
@@ -93,6 +100,7 @@ export const useEditorState = (
 ) => {
   const [project, setProject] = useState<SchematicProject>(initialProject);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedWireNode, setSelectedWireNode] = useState<WireNodeSelection | undefined>(undefined);
   const [activeTool, setActiveTool] = useState<Tool>("select");
   const [zoom, setZoomState] = useState(1);
   const [pan, setPanState] = useState<Point>({ x: 0, y: 0 });
@@ -182,10 +190,11 @@ export const useEditorState = (
     return {
       project: structuredClone(project),
       selectedIds: [...selectedIds],
+      selectedWireNode: selectedWireNode ? { ...selectedWireNode } : undefined,
       wireDraft: wireDraft ? structuredClone(wireDraft) : undefined,
       placingSymbolId,
     };
-  }, [placingSymbolId, project, selectedIds, wireDraft]);
+  }, [placingSymbolId, project, selectedIds, selectedWireNode, wireDraft]);
 
   const restoreSnapshot = useCallback(
     (snapshot: EditorHistorySnapshot) => {
@@ -193,6 +202,7 @@ export const useEditorState = (
 
       setProject(normalizeProjectWires(snapshot.project));
       setSelectedIds([...snapshot.selectedIds]);
+      setSelectedWireNode(snapshot.selectedWireNode ? { ...snapshot.selectedWireNode } : undefined);
       setWireDraft(snapshot.wireDraft ? structuredClone(snapshot.wireDraft) : undefined);
       setPlacingSymbolIdState(snapshot.placingSymbolId);
       moveHistoryRecordedRef.current = false;
@@ -220,6 +230,7 @@ export const useEditorState = (
 
     setProject(normalizeProjectWires(initialProject));
     setSelectedIds([]);
+    setSelectedWireNode(undefined);
     setWireDraft(undefined);
     setPlacingSymbolIdState(undefined);
     setActiveTool("select");
@@ -231,6 +242,7 @@ export const useEditorState = (
     () => ({
       project,
       selectedIds,
+      selectedWireNode,
       activeTool,
       zoom,
       pan,
@@ -238,7 +250,7 @@ export const useEditorState = (
       wireDraft,
       wireRoutingMode,
     }),
-    [activeTool, pan, placingSymbolId, project, selectedIds, wireDraft, wireRoutingMode, zoom],
+    [activeTool, pan, placingSymbolId, project, selectedIds, selectedWireNode, wireDraft, wireRoutingMode, zoom],
   );
 
   const applyProjectUpdate = useCallback(
@@ -434,6 +446,7 @@ export const useEditorState = (
 
       setProject(normalizeProjectWires(nextProject));
       setSelectedIds([]);
+      setSelectedWireNode(undefined);
       setWireDraft(undefined);
       setPlacingSymbolIdState(undefined);
       setActiveTool("select");
@@ -516,10 +529,89 @@ export const useEditorState = (
     selectObject: (id: string) => {
       console.info("[useEditorState] Selecting object", { id });
       setSelectedIds([id]);
+      setSelectedWireNode(undefined);
     },
     clearSelection: () => {
       console.info("[useEditorState] Clearing selection");
       setSelectedIds([]);
+      setSelectedWireNode(undefined);
+    },
+    selectWireNode: (wireId: string, pointIndex: number) => {
+      console.info("[useEditorState] Selecting wire node", { wireId, pointIndex });
+
+      setSelectedIds([wireId]);
+      setSelectedWireNode({ wireId, pointIndex });
+    },
+    moveWireNode: (point: Point) => {
+      console.info("[useEditorState] Moving selected wire node", { point, selectedWireNode });
+
+      if (!selectedWireNode) {
+        return;
+      }
+
+      const { wireId, pointIndex } = selectedWireNode;
+      const gridSize = project.gridSize || DEFAULT_GRID_SIZE;
+
+      if (!moveHistoryRecordedRef.current) {
+        recordHistory();
+        moveHistoryRecordedRef.current = true;
+      }
+
+      applyProjectUpdate(
+        "moveWireNode",
+        (currentProject) => ({
+          ...currentProject,
+          wires: currentProject.wires.map((wire) =>
+            wire.id === wireId ? updateWirePointPosition(wire, pointIndex, point, gridSize) : wire,
+          ),
+        }),
+        { record: false },
+      );
+    },
+    commitWireNodeEdit: () => {
+      console.info("[useEditorState] Committing wire node edit", { selectedWireNode });
+
+      if (!selectedWireNode) {
+        return;
+      }
+
+      const { wireId } = selectedWireNode;
+      moveHistoryRecordedRef.current = false;
+
+      applyProjectUpdate(
+        "commitWireNode",
+        (currentProject) => ({
+          ...currentProject,
+          wires: currentProject.wires.map((wire) =>
+            wire.id === wireId ? finalizeWireEndpointAnchors(wire, currentProject, symbolIndex) : wire,
+          ),
+        }),
+        { record: false },
+      );
+    },
+    removeWireNodeAt: (wireId: string, pointIndex: number) => {
+      console.info("[useEditorState] Removing wire node", { wireId, pointIndex });
+
+      const wire = project.wires.find((candidate) => candidate.id === wireId);
+      if (!wire) {
+        return;
+      }
+
+      const updatedWire = removeWirePointAtIndex(wire, pointIndex);
+      if (!updatedWire) {
+        return;
+      }
+
+      applyProjectUpdate("removeWireNode", (currentProject) => ({
+        ...currentProject,
+        wires: currentProject.wires.map((candidate) =>
+          candidate.id === wireId
+            ? finalizeWireEndpointAnchors(updatedWire, currentProject, symbolIndex)
+            : candidate,
+        ),
+      }));
+
+      setSelectedWireNode(undefined);
     },
     moveSelected: (dx: number, dy: number) => {
       console.info("[useEditorState] Moving selected objects", { dx, dy, selectedIds });
@@ -607,7 +699,33 @@ export const useEditorState = (
       }));
     },
     deleteSelected: () => {
-      console.info("[useEditorState] Deleting selected objects", { selectedIds });
+      console.info("[useEditorState] Deleting selected objects", { selectedIds, selectedWireNode });
+
+      if (selectedWireNode) {
+        const { wireId, pointIndex } = selectedWireNode;
+        const wire = project.wires.find((candidate) => candidate.id === wireId);
+        if (!wire) {
+          setSelectedWireNode(undefined);
+          return;
+        }
+
+        const updatedWire = removeWirePointAtIndex(wire, pointIndex);
+        if (!updatedWire) {
+          return;
+        }
+
+        applyProjectUpdate("deleteWireNode", (currentProject) => ({
+          ...currentProject,
+          wires: currentProject.wires.map((candidate) =>
+            candidate.id === wireId
+              ? finalizeWireEndpointAnchors(updatedWire, currentProject, symbolIndex)
+              : candidate,
+          ),
+        }));
+
+        setSelectedWireNode(undefined);
+        return;
+      }
 
       applyProjectUpdate("deleteSelected", (currentProject) => ({
         ...currentProject,
@@ -618,6 +736,7 @@ export const useEditorState = (
       }));
 
       setSelectedIds([]);
+      setSelectedWireNode(undefined);
     },
     startWire: (point: Point) => {
       console.info("[useEditorState] Starting wire draft", { point, wireRoutingMode });
@@ -630,6 +749,7 @@ export const useEditorState = (
         startWireId: nextAnchor.wireId,
       });
       setSelectedIds([]);
+      setSelectedWireNode(undefined);
     },
     startWireAtConnection: (connection: WireConnection) => {
       console.info("[useEditorState] Starting wire draft at pin connection", { connection });
@@ -646,6 +766,7 @@ export const useEditorState = (
         startConnection: connection,
       });
       setSelectedIds([]);
+      setSelectedWireNode(undefined);
     },
     addWirePoint: (point: Point) => {
       console.info("[useEditorState] Adding wire draft point", { point });
@@ -747,6 +868,7 @@ export const useEditorState = (
           startConnection: connection,
         });
         setSelectedIds([]);
+        setSelectedWireNode(undefined);
         return;
       }
 
