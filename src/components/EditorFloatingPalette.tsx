@@ -13,7 +13,7 @@ export const EditorFloatingPalette = ({ ariaLabel, children, className = "" }: E
 
   return (
     <aside
-      className={`pointer-events-auto fixed right-3 top-1/2 z-40 flex w-40 -translate-y-1/2 flex-col gap-2 p-2 ${glassDock} ${className}`}
+      className={`pointer-events-auto fixed left-[max(0.75rem,env(safe-area-inset-left))] top-1/2 z-40 flex w-44 -translate-y-1/2 flex-col gap-2 p-2 ${glassDock} ${className}`}
       aria-label={ariaLabel}
     >
       {children}

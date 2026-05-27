@@ -12,7 +12,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
-import type { LibrarySymbol, Point, SchematicProject } from "../library/types";
+import type { LibrarySymbol, Point, SchematicProject, WireConnection } from "../library/types";
 import { LabelView } from "./LabelView";
 import { DEFAULT_GRID_SIZE } from "./snapping";
 import { SymbolInstanceView } from "./SymbolInstanceView";
@@ -100,6 +100,7 @@ type SchematicCanvasProps = {
     clientX: number;
     clientY: number;
   }) => void;
+  onPinPointerDown?: (connection: WireConnection) => void;
 };
 
 const getWorldFillRect = (center: Point, viewWidth: number, viewHeight: number) => {
@@ -160,6 +161,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     fingerPansOnly = false,
     onDoubleTapFit,
     onObjectLongPress,
+    onPinPointerDown,
   },
   ref,
 ) {
@@ -959,6 +961,16 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
               selected={selectedIds.includes(instance.id)}
               onPointerDown={(event) => beginSelectionDrag(instance.id, event)}
               onLongPress={handleObjectLongPress(instance.id, "symbol")}
+              onPinPointerDown={
+                onPinPointerDown
+                  ? (connection, event) => {
+                      if (shouldCapturePointer(event)) {
+                        event.preventDefault();
+                      }
+                      onPinPointerDown(connection);
+                    }
+                  : undefined
+              }
             />
           );
         })}
@@ -968,8 +980,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
       {isCanvasEmpty ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-6 mx-auto max-w-2xl rounded-[2rem] border border-slate-800 bg-slate-950/85 p-6 text-center backdrop-blur">
-          <h2 className="text-2xl font-semibold text-white">Welcome to Schematic Tablet.</h2>
-          <ol className="mt-4 space-y-3 text-left text-base text-slate-300">
+          <h2 className="text-3xl font-semibold text-white">Welcome to Schematic Tablet.</h2>
+          <ol className="mt-4 space-y-3 text-left text-lg leading-relaxed text-slate-200">
             <li>1. Load the starter symbols or import a KiCad library.</li>
             <li>2. Search for a symbol and tap Place.</li>
             <li>3. Tap the canvas to place it, then drag to move it.</li>
@@ -979,7 +991,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
         </div>
       ) : null}
       {selectedSymbolName ? (
-        <div className="pointer-events-none absolute left-4 top-4 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-200">
+        <div className="pointer-events-none absolute left-4 top-4 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-base text-cyan-100">
           Tap to place {selectedSymbolName}
         </div>
       ) : null}

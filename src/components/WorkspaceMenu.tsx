@@ -5,10 +5,19 @@ import { glassPanel } from "./ui/uiStyles";
 
 type WorkspaceMenuProps = PropsWithChildren<{
   label?: string;
+  projectName?: string;
+  statusMessage?: string;
+  onSaveProject?: () => void;
 }>;
 
-export const WorkspaceMenu = ({ label = "Workspace", children }: WorkspaceMenuProps) => {
-  console.info("[WorkspaceMenu] Rendering workspace dropdown menu", { label });
+export const WorkspaceMenu = ({
+  label = "Menu",
+  projectName,
+  statusMessage,
+  onSaveProject,
+  children,
+}: WorkspaceMenuProps) => {
+  console.info("[WorkspaceMenu] Rendering workspace dropdown menu", { label, projectName });
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -44,7 +53,7 @@ export const WorkspaceMenu = ({ label = "Workspace", children }: WorkspaceMenuPr
     <div ref={containerRef} className="relative z-[60]">
       <BubbleButton
         variant={isOpen ? "primary" : "secondary"}
-        className="!py-2.5"
+        className="!px-4 !py-3 text-base"
         onClick={() => {
           console.info("[WorkspaceMenu] Toggling workspace dropdown", { nextOpen: !isOpen });
           setIsOpen((currentOpen) => !currentOpen);
@@ -55,9 +64,27 @@ export const WorkspaceMenu = ({ label = "Workspace", children }: WorkspaceMenuPr
 
       {isOpen ? (
         <div
-          className={`absolute right-0 top-full z-[70] mt-2 w-[min(28rem,calc(100vw-1.5rem))] p-3 ${glassPanel}`}
+          className={`app-chrome absolute left-0 top-full z-[70] mt-2 w-[min(32rem,calc(100vw-1.5rem))] p-4 ${glassPanel}`}
         >
-          <div className="max-h-[70svh] space-y-3 overflow-y-auto overscroll-contain pr-1">{children}</div>
+          {projectName || statusMessage || onSaveProject ? (
+            <div className="mb-4 space-y-3 border-b border-white/10 pb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300/90">Project</p>
+                <p className="mt-1 text-xl font-semibold text-white">{projectName ?? "Untitled"}</p>
+              </div>
+              {statusMessage ? (
+                <p className="rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5 text-base leading-relaxed text-slate-200">
+                  {statusMessage}
+                </p>
+              ) : null}
+              {onSaveProject ? (
+                <BubbleButton variant="primary" className="w-full !py-3 text-base" onClick={onSaveProject}>
+                  Save Project
+                </BubbleButton>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="max-h-[min(62svh,560px)] space-y-3 overflow-y-auto overscroll-contain pr-1">{children}</div>
         </div>
       ) : null}
     </div>

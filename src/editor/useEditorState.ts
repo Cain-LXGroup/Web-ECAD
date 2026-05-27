@@ -14,6 +14,7 @@ import {
   findNearestWireConnection,
   findNearestWireSegmentPoint,
   normalizeWirePoints,
+  resolveWireConnectionPoint,
   routeOrthogonalSegment,
 } from "./wireRouting";
 import {
@@ -567,8 +568,61 @@ export const useEditorState = (
       });
       setSelectedIds([]);
     },
+    startWireAtConnection: (connection: WireConnection) => {
+      console.info("[useEditorState] Starting wire draft at pin connection", { connection });
+
+      const anchorPoint = resolveWireConnectionPoint(project, symbolIndex, connection);
+      if (!anchorPoint) {
+        return;
+      }
+
+      setActiveTool("wire");
+      setWireDraft({
+        points: [anchorPoint],
+        routingMode: wireRoutingMode,
+        startConnection: connection,
+      });
+      setSelectedIds([]);
+    },
     addWirePoint: (point: Point) => {
       console.info("[useEditorState] Adding wire draft point", { point });
+
+      if (wireDraft) {
+        const nextAnchor = resolveWireAnchor(point, project);
+        const isSameStartPin =
+          nextAnchor.connection &&
+          wireDraft.startConnection &&
+          nextAnchor.connection.symbolInstanceId === wireDraft.startConnection.symbolInstanceId &&
+          nextAnchor.connection.pinNumber === wireDraft.startConnection.pinNumber;
+        const isTermination = Boolean((nextAnchor.connection || nextAnchor.wireId) && !isSameStartPin);
+        if (isTermination && wireDraft.points.length >= 1) {
+          const completedDraft = buildUpdatedWireDraft(wireDraft, nextAnchor.point, project);
+          if (completedDraft.points.length >= 2) {
+            const wireId = `wire-${uuidv4()}`;
+
+            applyProjectUpdate("finishWire", (currentProject) => ({
+              ...currentProject,
+              wires: [
+                ...currentProject.wires,
+                {
+                  id: wireId,
+                  points: normalizeWirePoints(completedDraft.points),
+                  routingMode: completedDraft.routingMode,
+                  startConnection: completedDraft.startConnection,
+                  endConnection: completedDraft.endConnection,
+                  startWireId: completedDraft.startWireId,
+                  endWireId: completedDraft.endWireId,
+                },
+              ],
+            }));
+
+            setSelectedIds([wireId]);
+            setWireDraft(undefined);
+            setActiveTool("select");
+            return;
+          }
+        }
+      }
 
       setWireDraft((currentDraft) =>
         currentDraft ? buildUpdatedWireDraft(currentDraft, point, project) : currentDraft,
@@ -605,10 +659,70 @@ export const useEditorState = (
 
       setSelectedIds([wireId]);
       setWireDraft(undefined);
+      setActiveTool("select");
     },
     cancelWire: () => {
       console.info("[useEditorState] Cancelling wire draft");
       setWireDraft(undefined);
+      setActiveTool("select");
+    },
+    handlePinTap: (connection: WireConnection) => {
+      console.info("[useEditorState] Handling pin tap for wiring", { connection, activeTool, hasWireDraft: Boolean(wireDraft) });
+
+      const anchorPoint = resolveWireConnectionPoint(project, symbolIndex, connection);
+      if (!anchorPoint) {
+        return;
+      }
+
+      if (!wireDraft) {
+        setActiveTool("wire");
+        setWireDraft({
+          points: [anchorPoint],
+          routingMode: wireRoutingMode,
+          startConnection: connection,
+        });
+        setSelectedIds([]);
+        return;
+      }
+
+      const nextAnchor = resolveWireAnchor(anchorPoint, project);
+      const isSameStartPin =
+        nextAnchor.connection &&
+        wireDraft.startConnection &&
+        nextAnchor.connection.symbolInstanceId === wireDraft.startConnection.symbolInstanceId &&
+        nextAnchor.connection.pinNumber === wireDraft.startConnection.pinNumber;
+
+      if (isSameStartPin) {
+        return;
+      }
+
+      const completedDraft = buildUpdatedWireDraft(wireDraft, nextAnchor.point, project);
+
+      if (completedDraft.points.length < 2) {
+        return;
+      }
+
+      const wireId = `wire-${uuidv4()}`;
+
+      applyProjectUpdate("finishWire", (currentProject) => ({
+        ...currentProject,
+        wires: [
+          ...currentProject.wires,
+          {
+            id: wireId,
+            points: normalizeWirePoints(completedDraft.points),
+            routingMode: completedDraft.routingMode,
+            startConnection: completedDraft.startConnection,
+            endConnection: completedDraft.endConnection,
+            startWireId: completedDraft.startWireId,
+            endWireId: completedDraft.endWireId,
+          },
+        ],
+      }));
+
+      setSelectedIds([wireId]);
+      setWireDraft(undefined);
+      setActiveTool("select");
     },
     getWirePreviewPoints: (point: Point): Point[] | undefined => {
       console.info("[useEditorState] Building wire preview points", { point });

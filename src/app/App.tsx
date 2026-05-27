@@ -12,8 +12,7 @@ import { ImportPanel, type ImportPanelStatus } from "../components/ImportPanel";
 import { ProjectPanel } from "../components/ProjectPanel";
 import { Sidebar } from "../components/Sidebar";
 import { SymbolSearchPanel } from "../components/SymbolSearchPanel";
-import { Toolbar } from "../components/Toolbar";
-import { EditorToolDock } from "../components/EditorToolDock";
+import { EditorRightRail } from "../components/EditorRightRail";
 import { FloatingChromeButton } from "../components/FloatingChromeButton";
 import { WireToolPalette } from "../components/WireToolPalette";
 import { WorkspaceMenu } from "../components/WorkspaceMenu";
@@ -694,78 +693,71 @@ function App() {
 
   const isFloatingChromeHidden = isLibraryDrawerOpen || isInspectorDrawerOpen;
 
-  return (
-    <div className="flex h-svh flex-col overflow-hidden bg-transparent text-slate-100">
-      <Toolbar
-        projectName={editor.state.project.name}
-        statusMessage={statusMessage}
+  const workspaceMenuPanels = (
+    <>
+      <ImportPanel
+        symbolCount={allSymbols.length}
+        importStatus={importStatus}
+        isImporting={isImportingLibrary}
+        installedBundledPacks={installedBundledPacks}
+        bundledSeedProgress={bundledSeedProgress}
+        activeBundledPackId={activeBundledPackId}
+        onInstallBundledPack={(packId) => {
+          void handleInstallBundledPack(packId);
+        }}
+        onLoadStarterSymbols={() => {
+          void handleLoadStarterSymbols();
+        }}
+        onLibraryFilesSelected={(selectedFiles) => {
+          void handleLibraryFilesSelected(selectedFiles);
+        }}
+      />
+      <ProjectPanel
+        projects={projects}
+        activeProjectId={activeProjectId}
+        activeProjectName={editor.state.project.name}
+        onActiveProjectNameChange={editor.setProjectName}
+        onCreateProject={() => {
+          void handleCreateProject();
+        }}
+        onDuplicateProject={() => {
+          void handleDuplicateProject();
+        }}
         onSaveProject={() => {
           void handleSaveProject();
         }}
-        workspaceMenu={
-          <WorkspaceMenu label="Workspace">
-            <ImportPanel
-              symbolCount={allSymbols.length}
-              importStatus={importStatus}
-              isImporting={isImportingLibrary}
-              installedBundledPacks={installedBundledPacks}
-              bundledSeedProgress={bundledSeedProgress}
-              activeBundledPackId={activeBundledPackId}
-              onInstallBundledPack={(packId) => {
-                void handleInstallBundledPack(packId);
-              }}
-              onLoadStarterSymbols={() => {
-                void handleLoadStarterSymbols();
-              }}
-              onLibraryFilesSelected={(selectedFiles) => {
-                void handleLibraryFilesSelected(selectedFiles);
-              }}
-            />
-            <ProjectPanel
-              projects={projects}
-              activeProjectId={activeProjectId}
-              activeProjectName={editor.state.project.name}
-              onActiveProjectNameChange={editor.setProjectName}
-              onCreateProject={() => {
-                void handleCreateProject();
-              }}
-              onDuplicateProject={() => {
-                void handleDuplicateProject();
-              }}
-              onSaveProject={() => {
-                void handleSaveProject();
-              }}
-              onSelectProject={handleSelectProject}
-              onDeleteProject={(projectId) => {
-                void handleDeleteProject(projectId);
-              }}
-            />
-            <EditorSettingsPanel
-              fingerPansOnly={appSettings.fingerPansOnly}
-              soundEnabled={appSettings.soundEnabled}
-              onFingerPansOnlyChange={appSettings.setFingerPansOnly}
-              onSoundEnabledChange={appSettings.setSoundEnabled}
-            />
-            <ExportPanel
-              onExportBackup={() => {
-                void handleExportBackup();
-              }}
-              onImportBackup={(file) => {
-                void handleImportBackup(file);
-              }}
-              onExportProjectJson={handleExportProjectJson}
-              onExportSvg={handleExportSvg}
-              onExportPng={() => {
-                void handleExportPng();
-              }}
-              onExportPdf={() => {
-                void handleExportPdf();
-              }}
-            />
-          </WorkspaceMenu>
-        }
+        onSelectProject={handleSelectProject}
+        onDeleteProject={(projectId) => {
+          void handleDeleteProject(projectId);
+        }}
       />
+      <EditorSettingsPanel
+        fingerPansOnly={appSettings.fingerPansOnly}
+        soundEnabled={appSettings.soundEnabled}
+        onFingerPansOnlyChange={appSettings.setFingerPansOnly}
+        onSoundEnabledChange={appSettings.setSoundEnabled}
+      />
+      <ExportPanel
+        onExportBackup={() => {
+          void handleExportBackup();
+        }}
+        onImportBackup={(file) => {
+          void handleImportBackup(file);
+        }}
+        onExportProjectJson={handleExportProjectJson}
+        onExportSvg={handleExportSvg}
+        onExportPng={() => {
+          void handleExportPng();
+        }}
+        onExportPdf={() => {
+          void handleExportPdf();
+        }}
+      />
+    </>
+  );
 
+  return (
+    <div className="app-chrome flex h-svh flex-col overflow-hidden bg-transparent text-slate-100">
       <div className="relative grid h-full min-h-0 w-full flex-1 gap-0 overflow-hidden p-0 xl:mx-auto xl:max-w-[1800px] xl:gap-4 xl:p-4 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
         <div className="hidden xl:block">
           <Sidebar title="Symbol Library">
@@ -780,9 +772,21 @@ function App() {
           </Sidebar>
         </div>
 
-        <div className="pointer-events-none absolute left-3 top-3 z-40 flex gap-2 xl:hidden">
+        <div className="pointer-events-none absolute left-[max(0.75rem,env(safe-area-inset-left))] top-[max(0.75rem,env(safe-area-inset-top))] z-40 flex flex-wrap gap-2">
+          <div className="pointer-events-auto">
+            <WorkspaceMenu
+              label="Menu"
+              projectName={editor.state.project.name}
+              statusMessage={statusMessage}
+              onSaveProject={() => {
+                void handleSaveProject();
+              }}
+            >
+              {workspaceMenuPanels}
+            </WorkspaceMenu>
+          </div>
           <FloatingChromeButton
-            className="pointer-events-auto"
+            className="pointer-events-auto xl:hidden"
             label="Symbols"
             onClick={() => {
               console.info("[App] Toggling symbol library drawer", { next: !isLibraryDrawerOpen });
@@ -790,7 +794,7 @@ function App() {
             }}
           />
           <FloatingChromeButton
-            className="pointer-events-auto"
+            className="pointer-events-auto xl:hidden"
             label="Inspector"
             onClick={() => {
               console.info("[App] Toggling inspector drawer", { next: !isInspectorDrawerOpen });
@@ -804,7 +808,7 @@ function App() {
           />
         </div>
 
-        <div className="flex min-h-0 flex-col gap-4 pb-24 xl:pb-0">
+        <div className="relative flex min-h-0 flex-col gap-4">
           {!isFloatingChromeHidden && editor.state.activeTool === "select" && editor.state.selectedIds.length > 0 ? (
             <ToolActionPalette
               ariaLabel="Selection actions"
@@ -874,22 +878,6 @@ function App() {
             />
           ) : null}
 
-          {editor.state.activeTool === "wire" && !isFloatingChromeHidden ? (
-            <WireToolPalette
-              canPlaceWire={Boolean(editor.state.wireDraft && editor.state.wireDraft.points.length >= 2)}
-              canCancelWire={Boolean(editor.state.wireDraft)}
-              onPlaceWire={() => {
-                editor.finishWire();
-                playPlacementClick(appSettings.soundEnabled);
-                setStatusMessage("Placed the current wire.");
-              }}
-              onCancelWire={() => {
-                editor.cancelWire();
-                setStatusMessage("Cancelled the current wire draft.");
-              }}
-            />
-          ) : null}
-
           <SchematicCanvas
             ref={canvasRef}
             project={editor.state.project}
@@ -920,14 +908,17 @@ function App() {
             onObjectLongPress={(target) => {
               setContextMenuTarget(target);
             }}
+            onPinPointerDown={(connection) => {
+              const hadWireDraft = Boolean(editor.state.wireDraft);
+              editor.handlePinTap(connection);
+              if (hadWireDraft) {
+                playPlacementClick(appSettings.soundEnabled);
+                setStatusMessage("Placed wire. Switched back to select.");
+              } else {
+                setStatusMessage("Wire tool active. Tap pins, wires, or the canvas to route and finish.");
+              }
+            }}
           />
-
-          <div className="hidden justify-center xl:flex">
-            <EditorToolDock
-              activeTool={editor.state.activeTool}
-              onAction={handleBottomToolbarAction}
-            />
-          </div>
         </div>
 
         <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto xl:flex">
@@ -950,15 +941,28 @@ function App() {
         />
       ) : null}
 
-      {!isFloatingChromeHidden ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-3 xl:hidden">
-          <EditorToolDock
-            className="pointer-events-auto max-w-full overflow-x-auto"
-            activeTool={editor.state.activeTool}
-            onAction={handleBottomToolbarAction}
-          />
-        </div>
-      ) : null}
+      <EditorRightRail
+        hidden={isFloatingChromeHidden}
+        activeTool={editor.state.activeTool}
+        onAction={handleBottomToolbarAction}
+        wireTools={
+          editor.state.activeTool === "wire" ? (
+            <WireToolPalette
+              canPlaceWire={Boolean(editor.state.wireDraft && editor.state.wireDraft.points.length >= 2)}
+              canCancelWire={Boolean(editor.state.wireDraft)}
+              onPlaceWire={() => {
+                editor.finishWire();
+                playPlacementClick(appSettings.soundEnabled);
+                setStatusMessage("Placed wire. Switched back to select.");
+              }}
+              onCancelWire={() => {
+                editor.cancelWire();
+                setStatusMessage("Cancelled wire. Switched back to select.");
+              }}
+            />
+          ) : undefined
+        }
+      />
 
       <SheetDrawer
         isOpen={isLibraryDrawerOpen}

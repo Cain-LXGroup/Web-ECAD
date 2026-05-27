@@ -5,6 +5,8 @@
 :root {
   color: #e2e8f0;
   background-color: #020617;
+  font-size: 17px;
+  line-height: 1.5;
   font-family:
     -apple-system,
     BlinkMacSystemFont,
@@ -56,4 +58,16 @@ select {
 
 .schematic-canvas {
   touch-action: none;
+}
+
+.app-chrome {
+  font-size: 1.0625rem;
+  line-height: 1.55;
+}
+
+.app-chrome button,
+.app-chrome input,
+.app-chrome textarea,
+.app-chrome select {
+  font-size: 1rem;
 }

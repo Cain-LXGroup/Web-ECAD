@@ -9,7 +9,7 @@ export const glassDock =
   "rounded-[1.75rem] border border-white/12 bg-slate-950/70 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-3xl backdrop-saturate-150";
 
 export const bubbleButtonBase =
-  "touch-manipulation rounded-2xl font-semibold transition-all duration-200 ease-out active:scale-[0.97]";
+  "touch-manipulation rounded-2xl text-base font-semibold transition-all duration-200 ease-out active:scale-[0.97]";
 
 export const bubbleButtonPrimary =
   `${bubbleButtonBase} bg-cyan-400/95 text-slate-950 shadow-[0_8px_28px_rgba(34,211,238,0.35)] hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-800/80 disabled:text-slate-500 disabled:shadow-none`;

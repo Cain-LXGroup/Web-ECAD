@@ -2,7 +2,7 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 import { useLongPress } from "../hooks/useLongPress";
 import { getPinBodyPoint, getPinDirection } from "../library/symbolGeometry";
-import type { LibrarySymbol, SymbolGraphic, SymbolInstance } from "../library/types";
+import type { LibrarySymbol, SymbolGraphic, SymbolInstance, WireConnection } from "../library/types";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 
 const ARC_TOLERANCE = 0.01;
@@ -151,6 +151,7 @@ type SymbolInstanceViewProps = {
   showFieldLabels?: boolean;
   onPointerDown?: (event: ReactPointerEvent<SVGGElement>) => void;
   onLongPress?: (event: ReactPointerEvent<SVGElement>) => void;
+  onPinPointerDown?: (connection: WireConnection, event: ReactPointerEvent<SVGCircleElement>) => void;
 };
 
 export const SymbolInstanceView = ({
@@ -161,6 +162,7 @@ export const SymbolInstanceView = ({
   showFieldLabels = true,
   onPointerDown,
   onLongPress,
+  onPinPointerDown,
 }: SymbolInstanceViewProps) => {
   console.info("[SymbolInstanceView] Rendering symbol instance", {
     instanceId: instance.id,
@@ -235,7 +237,27 @@ export const SymbolInstanceView = ({
                   strokeWidth={2}
                   strokeLinecap="round"
                 />
-                <circle cx={pin.x} cy={pin.y} r={6} fill={kicadSchematicTheme.pinConnection} />
+                <circle cx={pin.x} cy={pin.y} r={6} fill={kicadSchematicTheme.pinConnection} pointerEvents="none" />
+                {onPinPointerDown ? (
+                  <circle
+                    cx={pin.x}
+                    cy={pin.y}
+                    r={22}
+                    fill="transparent"
+                    stroke="transparent"
+                    style={{ cursor: "crosshair" }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      onPinPointerDown(
+                        {
+                          symbolInstanceId: instance.id,
+                          pinNumber: pin.number,
+                        },
+                        event,
+                      );
+                    }}
+                  />
+                ) : null}
               </g>
             );
           })}

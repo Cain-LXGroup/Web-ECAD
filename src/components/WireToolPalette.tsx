@@ -1,5 +1,4 @@
 import { BubbleButton } from "./ui/BubbleButton";
-import { EditorFloatingPalette } from "./EditorFloatingPalette";
 
 type WireToolPaletteProps = {
   canPlaceWire: boolean;
@@ -17,14 +16,14 @@ export const WireToolPalette = ({
   console.info("[WireToolPalette] Rendering wire tool palette", { canPlaceWire, canCancelWire });
 
   return (
-    <EditorFloatingPalette ariaLabel="Wire tools">
+    <div className="flex flex-col gap-2" aria-label="Wire tools">
       <BubbleButton variant="primary" disabled={!canPlaceWire} onClick={onPlaceWire}>
         Place Wire
       </BubbleButton>
       <BubbleButton variant="secondary" disabled={!canCancelWire} onClick={onCancelWire}>
         Cancel Wire
       </BubbleButton>
-    </EditorFloatingPalette>
+    </div>
   );
 };
 

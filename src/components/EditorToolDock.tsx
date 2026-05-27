@@ -6,18 +6,26 @@ type EditorToolDockProps = {
   activeTool: BottomToolbarAction | string;
   onAction: (actionId: BottomToolbarAction) => void;
   className?: string;
+  orientation?: "horizontal" | "vertical";
 };
 
 const isToolbarAction = (tool: string): tool is BottomToolbarAction => {
   return bottomToolbarActions.some((action) => action.id === tool);
 };
 
-export const EditorToolDock = ({ activeTool, onAction, className = "" }: EditorToolDockProps) => {
-  console.info("[EditorToolDock] Rendering editor tool dock", { activeTool });
+export const EditorToolDock = ({
+  activeTool,
+  onAction,
+  className = "",
+  orientation = "horizontal",
+}: EditorToolDockProps) => {
+  console.info("[EditorToolDock] Rendering editor tool dock", { activeTool, orientation });
+
+  const layoutClass = orientation === "vertical" ? "flex-col" : "flex-row items-center";
 
   return (
     <nav
-      className={`${glassDock} flex items-center gap-1 p-2 ${className}`}
+      className={`${glassDock} flex gap-1 p-2 ${layoutClass} ${className}`}
       aria-label="Editor tools"
     >
       {bottomToolbarActions.map((action) => {
