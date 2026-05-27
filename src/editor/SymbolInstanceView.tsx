@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
+import { useLongPress } from "../hooks/useLongPress";
 import { getPinBodyPoint, getPinDirection } from "../library/symbolGeometry";
 import type { LibrarySymbol, SymbolGraphic, SymbolInstance } from "../library/types";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
@@ -149,6 +150,7 @@ type SymbolInstanceViewProps = {
   showPinLabels?: boolean;
   showFieldLabels?: boolean;
   onPointerDown?: (event: ReactPointerEvent<SVGGElement>) => void;
+  onLongPress?: (event: ReactPointerEvent<SVGElement>) => void;
 };
 
 export const SymbolInstanceView = ({
@@ -158,6 +160,7 @@ export const SymbolInstanceView = ({
   showPinLabels = true,
   showFieldLabels = true,
   onPointerDown,
+  onLongPress,
 }: SymbolInstanceViewProps) => {
   console.info("[SymbolInstanceView] Rendering symbol instance", {
     instanceId: instance.id,
@@ -170,10 +173,24 @@ export const SymbolInstanceView = ({
   const displayValue = instance.value || symbol.properties?.Value || symbol.name;
   const displayRef = instance.ref || `${symbol.referencePrefix ?? "U"}?`;
 
+  const longPressHandlers = useLongPress(
+    (event) => {
+      event.stopPropagation();
+      onLongPress?.(event);
+    },
+    { disabled: !onLongPress },
+  );
+
   return (
     <g
       transform={`translate(${instance.x} ${instance.y}) rotate(${instance.rotation}) scale(${instance.mirrored ? -1 : 1} 1)`}
-      onPointerDown={onPointerDown}
+      onPointerDown={(event) => {
+        longPressHandlers.onPointerDown(event);
+        onPointerDown?.(event);
+      }}
+      onPointerMove={longPressHandlers.onPointerMove}
+      onPointerUp={longPressHandlers.onPointerUp}
+      onPointerCancel={longPressHandlers.onPointerCancel}
     >
       <rect
         x={symbol.bounds.minX - 24}

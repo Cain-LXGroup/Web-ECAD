@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import { bottomToolbarActions } from "./routes";
-import { ContextMenu } from "../components/ContextMenu";
+import { CanvasContextMenu, type CanvasContextMenuTarget } from "../components/CanvasContextMenu";
+import { EditorSettingsPanel } from "../components/EditorSettingsPanel";
+import { ToolActionPalette } from "../components/ToolActionPalette";
+import { UndoRedoButtons } from "../components/UndoRedoButtons";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ExportPanel } from "../components/ExportPanel";
 import { ImportPanel, type ImportPanelStatus } from "../components/ImportPanel";
@@ -25,7 +28,9 @@ import { exportPdf } from "../export/exportPdf";
 import { exportPng } from "../export/exportPng";
 import { exportProjectJson } from "../export/exportProjectJson";
 import { exportSvg } from "../export/exportSvg";
+import { useAppSettings } from "../hooks/useAppSettings";
 import { useEditorKeyboardShortcuts } from "../hooks/useEditorKeyboardShortcuts";
+import { playPlacementClick } from "../lib/feedback";
 import type { BundledLibraryPackId } from "../library/bundledLibraryCatalog";
 import { importLibraryFiles } from "../library/importLibraryFiles";
 import {
@@ -86,6 +91,8 @@ function App() {
   const [isInspectorDrawerOpen, setIsInspectorDrawerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<SchematicCanvasHandle | null>(null);
+  const [contextMenuTarget, setContextMenuTarget] = useState<CanvasContextMenuTarget | null>(null);
+  const appSettings = useAppSettings();
 
   const symbolIndex = useMemo(
     () =>
@@ -109,6 +116,19 @@ function App() {
     return svg;
   }, []);
 
+  const handleFitView = useCallback(() => {
+    console.info("[App] Fitting viewport to content");
+
+    if (editor.state.selectedIds.length > 0) {
+      editor.fitToSelection(symbolIndex);
+      setStatusMessage("Zoomed to the current selection.");
+      return;
+    }
+
+    editor.fitToContent(symbolIndex);
+    setStatusMessage("Zoomed to fit the schematic.");
+  }, [editor, symbolIndex]);
+
   useEditorKeyboardShortcuts({
     onSetTool: editor.setTool,
     onDeleteSelected: () => {
@@ -121,7 +141,16 @@ function App() {
     },
     onFinishWire: () => {
       editor.finishWire();
+      playPlacementClick(appSettings.soundEnabled);
       setStatusMessage("Placed the current wire.");
+    },
+    onUndo: () => {
+      editor.undo();
+      setStatusMessage("Undid the last action.");
+    },
+    onRedo: () => {
+      editor.redo();
+      setStatusMessage("Redid the last action.");
     },
     hasWireDraft: Boolean(editor.state.wireDraft),
   });
@@ -711,6 +740,12 @@ function App() {
                 void handleDeleteProject(projectId);
               }}
             />
+            <EditorSettingsPanel
+              fingerPansOnly={appSettings.fingerPansOnly}
+              soundEnabled={appSettings.soundEnabled}
+              onFingerPansOnlyChange={appSettings.setFingerPansOnly}
+              onSoundEnabledChange={appSettings.setSoundEnabled}
+            />
             <ExportPanel
               onExportBackup={() => {
                 void handleExportBackup();
@@ -762,15 +797,90 @@ function App() {
               setIsInspectorDrawerOpen((current) => !current);
             }}
           />
+          <FloatingChromeButton
+            className="pointer-events-auto"
+            label="Fit"
+            onClick={handleFitView}
+          />
         </div>
 
         <div className="flex min-h-0 flex-col gap-4 pb-24 xl:pb-0">
+          {!isFloatingChromeHidden && editor.state.activeTool === "select" && editor.state.selectedIds.length > 0 ? (
+            <ToolActionPalette
+              ariaLabel="Selection actions"
+              actions={[
+                {
+                  id: "rotate",
+                  label: "Rotate",
+                  onClick: () => {
+                    editor.rotateSelected();
+                    setStatusMessage("Rotated the selected symbol.");
+                  },
+                },
+                {
+                  id: "mirror",
+                  label: "Mirror",
+                  onClick: () => {
+                    editor.mirrorSelected();
+                    setStatusMessage("Mirrored the selected symbol.");
+                  },
+                },
+                {
+                  id: "zoom-selection",
+                  label: "Zoom Here",
+                  variant: "primary",
+                  onClick: () => {
+                    editor.fitToSelection(symbolIndex);
+                    setStatusMessage("Zoomed to the current selection.");
+                  },
+                },
+                {
+                  id: "delete",
+                  label: "Delete",
+                  onClick: () => {
+                    editor.deleteSelected();
+                    setStatusMessage("Deleted the selected object.");
+                  },
+                },
+              ]}
+            />
+          ) : null}
+
+          {!isFloatingChromeHidden && editor.state.activeTool === "label" ? (
+            <ToolActionPalette
+              ariaLabel="Label tool"
+              actions={[
+                {
+                  id: "label-hint",
+                  label: "Tap canvas to place a net label",
+                  disabled: true,
+                  onClick: () => undefined,
+                },
+              ]}
+            />
+          ) : null}
+
+          {!isFloatingChromeHidden && editor.state.activeTool === "text" ? (
+            <ToolActionPalette
+              ariaLabel="Text tool"
+              actions={[
+                {
+                  id: "text-hint",
+                  label: "Tap canvas to place a text note",
+                  disabled: true,
+                  onClick: () => undefined,
+                },
+              ]}
+            />
+          ) : null}
+
           {editor.state.activeTool === "wire" && !isFloatingChromeHidden ? (
             <WireToolPalette
               canPlaceWire={Boolean(editor.state.wireDraft && editor.state.wireDraft.points.length >= 2)}
               canCancelWire={Boolean(editor.state.wireDraft)}
               onPlaceWire={() => {
                 editor.finishWire();
+                playPlacementClick(appSettings.soundEnabled);
                 setStatusMessage("Placed the current wire.");
               }}
               onCancelWire={() => {
@@ -795,13 +905,21 @@ function App() {
             onClearSelection={editor.clearSelection}
             onMoveSelected={editor.moveSelected}
             onSnapSelectedToGrid={editor.snapSelectedToGrid}
-            onPlaceSymbol={editor.placeSymbol}
+            onPlaceSymbol={(symbolId, point) => {
+              editor.placeSymbol(symbolId, point);
+              playPlacementClick(appSettings.soundEnabled);
+            }}
             onStartWire={editor.startWire}
             onAddWirePoint={editor.addWirePoint}
             onAddNetLabel={editor.addNetLabel}
             onAddTextNote={editor.addTextNote}
             onSetPan={editor.setPan}
             onSetZoom={editor.setZoom}
+            fingerPansOnly={appSettings.fingerPansOnly}
+            onDoubleTapFit={handleFitView}
+            onObjectLongPress={(target) => {
+              setContextMenuTarget(target);
+            }}
           />
 
           <div className="hidden justify-center xl:flex">
@@ -816,6 +934,21 @@ function App() {
           {inspectorSections}
         </aside>
       </div>
+
+      {!isFloatingChromeHidden ? (
+        <UndoRedoButtons
+          canUndo={editor.canUndo}
+          canRedo={editor.canRedo}
+          onUndo={() => {
+            editor.undo();
+            setStatusMessage("Undid the last action.");
+          }}
+          onRedo={() => {
+            editor.redo();
+            setStatusMessage("Redid the last action.");
+          }}
+        />
+      ) : null}
 
       {!isFloatingChromeHidden ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-3 xl:hidden">
@@ -852,7 +985,40 @@ function App() {
         <div className="flex flex-col gap-4">{inspectorSections}</div>
       </SheetDrawer>
 
-      <ContextMenu />
+      <CanvasContextMenu
+        target={contextMenuTarget}
+        canDuplicate={contextMenuTarget?.objectType === "symbol"}
+        onClose={() => setContextMenuTarget(null)}
+        onDuplicate={() => {
+          if (!contextMenuTarget) {
+            return;
+          }
+
+          editor.duplicateSelected();
+          setContextMenuTarget(null);
+          setStatusMessage("Duplicated the selected symbol.");
+        }}
+        onDelete={() => {
+          if (!contextMenuTarget) {
+            return;
+          }
+
+          editor.selectObject(contextMenuTarget.objectId);
+          editor.deleteSelected();
+          setContextMenuTarget(null);
+          setStatusMessage("Deleted the selected object.");
+        }}
+        onProperties={() => {
+          if (!contextMenuTarget) {
+            return;
+          }
+
+          editor.selectObject(contextMenuTarget.objectId);
+          setContextMenuTarget(null);
+          setIsInspectorDrawerOpen(true);
+          setStatusMessage("Opened inspector for the selected object.");
+        }}
+      />
     </div>
   );
 }

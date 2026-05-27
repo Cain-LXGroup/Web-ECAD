@@ -3,6 +3,7 @@ import {
   type Dispatch,
   type PointerEvent as ReactPointerEvent,
   type SetStateAction,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -26,9 +27,15 @@ import {
   getZoomAtClientPoint,
   getZoomOnlyViewportFromPinch,
 } from "./canvasViewport";
+import { CanvasHud } from "../components/CanvasHud";
+import { vibrateSnap } from "../lib/feedback";
 import { clientDeltaToWorldDelta, clientPointToWorld } from "./svgCoordinates";
 
 const TAP_DRAG_THRESHOLD_PX = 12;
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_DISTANCE_PX = 28;
+const INERTIA_FRICTION = 0.9;
+const INERTIA_MIN_VELOCITY = 0.35;
 
 type CanvasTapAction =
   | { kind: "wire" }
@@ -42,6 +49,7 @@ type DragState = {
   lastClient: Point;
   lastWorld: Point;
   startClient: Point;
+  originWorld: Point;
   isPanning: boolean;
   tapAction?: CanvasTapAction;
 };
@@ -80,6 +88,14 @@ type SchematicCanvasProps = {
   onAddTextNote: (text: string, point: Point) => void;
   onSetPan: Dispatch<SetStateAction<Point>>;
   onSetZoom: Dispatch<SetStateAction<number>>;
+  fingerPansOnly?: boolean;
+  onDoubleTapFit?: () => void;
+  onObjectLongPress?: (target: {
+    objectId: string;
+    objectType: "symbol" | "wire" | "net-label" | "text-note";
+    clientX: number;
+    clientY: number;
+  }) => void;
 };
 
 const getWorldFillRect = (center: Point, viewWidth: number, viewHeight: number) => {
@@ -137,6 +153,9 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     onAddTextNote,
     onSetPan,
     onSetZoom,
+    fingerPansOnly = false,
+    onDoubleTapFit,
+    onObjectLongPress,
   },
   ref,
 ) {
@@ -153,8 +172,50 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
   const panRef = useRef(pan);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [wireHoverPoint, setWireHoverPoint] = useState<Point | null>(null);
+  const [snapIndicatorPoint, setSnapIndicatorPoint] = useState<Point | null>(null);
+  const [measureLabel, setMeasureLabel] = useState<string | undefined>(undefined);
   const dragStateRef = useRef<DragState | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | undefined>(undefined);
+  const panVelocityRef = useRef<Point>({ x: 0, y: 0 });
+  const inertiaFrameRef = useRef<number | undefined>(undefined);
+  const lastSnapPulseRef = useRef(0);
   const gridSize = project.gridSize ?? DEFAULT_GRID_SIZE;
+
+  const stopInertia = useCallback(() => {
+    if (inertiaFrameRef.current !== undefined) {
+      cancelAnimationFrame(inertiaFrameRef.current);
+      inertiaFrameRef.current = undefined;
+    }
+  }, []);
+
+  const startInertia = useCallback(() => {
+    console.info("[SchematicCanvas] Starting inertial pan");
+
+    stopInertia();
+
+    let velocityX = panVelocityRef.current.x;
+    let velocityY = panVelocityRef.current.y;
+
+    const step = () => {
+      if (Math.abs(velocityX) < INERTIA_MIN_VELOCITY && Math.abs(velocityY) < INERTIA_MIN_VELOCITY) {
+        stopInertia();
+        return;
+      }
+
+      onSetPan((currentPan) => ({
+        x: currentPan.x - velocityX,
+        y: currentPan.y - velocityY,
+      }));
+
+      velocityX *= INERTIA_FRICTION;
+      velocityY *= INERTIA_FRICTION;
+      inertiaFrameRef.current = requestAnimationFrame(step);
+    };
+
+    inertiaFrameRef.current = requestAnimationFrame(step);
+  }, [onSetPan, stopInertia]);
+
+  useEffect(() => () => stopInertia(), [stopInertia]);
 
   useImperativeHandle(ref, () => ({
     getSvgElement: () => svgRef.current,
@@ -296,6 +357,25 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     }
   };
 
+  const handleObjectLongPress =
+    (objectId: string, objectType: "symbol" | "wire" | "net-label" | "text-note") =>
+    (event: ReactPointerEvent<SVGElement>) => {
+      onObjectLongPress?.({
+        objectId,
+        objectType,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    };
+
+  const formatMeasureLabel = (start: Point, end: Point): string => {
+    const dx = Math.abs(end.x - start.x);
+    const dy = Math.abs(end.y - start.y);
+    const gridUnitsX = (dx / gridSize).toFixed(1);
+    const gridUnitsY = (dy / gridSize).toFixed(1);
+    return `Δ ${gridUnitsX} × ${gridUnitsY} grid`;
+  };
+
   const beginSelectionDrag = (id: string, event: ReactPointerEvent<SVGElement>) => {
     console.info("[SchematicCanvas] Beginning selection drag", { id });
 
@@ -316,14 +396,17 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     }
 
     event.currentTarget.setPointerCapture(event.pointerId);
+    stopInertia();
     setDragState({
       pointerId: event.pointerId,
       mode: "move-selection",
       lastClient: { x: event.clientX, y: event.clientY },
       lastWorld: canvasPoint,
       startClient: { x: event.clientX, y: event.clientY },
+      originWorld: canvasPoint,
       isPanning: true,
     });
+    setMeasureLabel(formatMeasureLabel(canvasPoint, canvasPoint));
   };
 
   const executeCanvasTap = (action: CanvasTapAction, canvasPoint: Point) => {
@@ -362,6 +445,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     canvasPoint: Point,
     tapAction?: CanvasTapAction,
   ) => {
+    stopInertia();
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragState({
       pointerId: event.pointerId,
@@ -369,6 +453,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       lastClient: { x: event.clientX, y: event.clientY },
       lastWorld: canvasPoint,
       startClient: { x: event.clientX, y: event.clientY },
+      originWorld: canvasPoint,
       isPanning: activeTool === "pan",
       tapAction,
     });
@@ -403,6 +488,11 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
     if (placingSymbolId) {
       onPlaceSymbol(placingSymbolId, canvasPoint);
+      return;
+    }
+
+    if (fingerPansOnly && event.pointerType === "touch") {
+      beginCanvasGesture(event, canvasPoint);
       return;
     }
 
@@ -447,8 +537,35 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     if (activeTool === "wire" && wireDraft && wireDraft.points.length > 0 && getWirePreviewPoints) {
       const hoverPoint = getCanvasPoint(event);
       setWireHoverPoint(hoverPoint);
-    } else if (wireHoverPoint) {
-      setWireHoverPoint(null);
+
+      if (hoverPoint) {
+        const previewPoints = getWirePreviewPoints(hoverPoint);
+        const snappedPoint = previewPoints?.[previewPoints.length - 1];
+        if (
+          snappedPoint &&
+          Math.hypot(snappedPoint.x - hoverPoint.x, snappedPoint.y - hoverPoint.y) > gridSize * 0.2
+        ) {
+          setSnapIndicatorPoint(snappedPoint);
+          const now = Date.now();
+          if (now - lastSnapPulseRef.current > 120) {
+            vibrateSnap();
+            lastSnapPulseRef.current = now;
+          }
+          if (wireDraft.points.length > 0) {
+            const origin = wireDraft.points[wireDraft.points.length - 1];
+            setMeasureLabel(formatMeasureLabel(origin, snappedPoint));
+          }
+        } else {
+          setSnapIndicatorPoint(null);
+        }
+      }
+    } else {
+      if (wireHoverPoint) {
+        setWireHoverPoint(null);
+      }
+      if (snapIndicatorPoint) {
+        setSnapIndicatorPoint(null);
+      }
     }
 
     if (!dragState || dragState.pointerId !== event.pointerId) {
@@ -466,7 +583,10 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
         return;
       }
 
-      onMoveSelected(canvasPoint.x - dragState.lastWorld.x, canvasPoint.y - dragState.lastWorld.y);
+      const deltaX = canvasPoint.x - dragState.lastWorld.x;
+      const deltaY = canvasPoint.y - dragState.lastWorld.y;
+      onMoveSelected(deltaX, deltaY);
+      setMeasureLabel(formatMeasureLabel(dragState.originWorld, canvasPoint));
       setDragState((currentDragState) =>
         currentDragState
           ? {
@@ -501,6 +621,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
+    panVelocityRef.current = worldDelta;
+
     onSetPan((currentPan) => ({
       x: currentPan.x - worldDelta.x,
       y: currentPan.y - worldDelta.y,
@@ -532,14 +654,37 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
+    const wasPanGesture =
+      dragState.mode === "canvas-gesture" &&
+      (dragState.isPanning ||
+        getClientDistance(dragState.startClient, { x: event.clientX, y: event.clientY }) >=
+          TAP_DRAG_THRESHOLD_PX);
+
     if (dragState.mode === "move-selection") {
       onSnapSelectedToGrid();
-    } else if (
-      dragState.mode === "canvas-gesture" &&
-      !dragState.isPanning &&
-      dragState.tapAction
-    ) {
-      executeCanvasTap(dragState.tapAction, dragState.lastWorld);
+    } else if (wasPanGesture) {
+      startInertia();
+    } else if (dragState.mode === "canvas-gesture") {
+      const lastTap = lastTapRef.current;
+      const now = Date.now();
+      const isDoubleTap =
+        lastTap &&
+        now - lastTap.time < DOUBLE_TAP_MS &&
+        getClientDistance(lastTap, { x: event.clientX, y: event.clientY }) < DOUBLE_TAP_DISTANCE_PX;
+
+      if (
+        isDoubleTap &&
+        onDoubleTapFit &&
+        (dragState.tapAction?.kind === "clear-selection" || !dragState.tapAction)
+      ) {
+        onDoubleTapFit();
+        lastTapRef.current = undefined;
+      } else {
+        if (dragState.tapAction) {
+          executeCanvasTap(dragState.tapAction, dragState.lastWorld);
+        }
+        lastTapRef.current = { time: now, x: event.clientX, y: event.clientY };
+      }
     }
 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -547,6 +692,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     }
 
     setDragState(null);
+    setMeasureLabel(undefined);
+    setSnapIndicatorPoint(null);
   };
 
   const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
@@ -686,12 +833,25 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
           fill="url(#schematic-grid-pattern)"
         />
 
+        {snapIndicatorPoint ? (
+          <circle
+            cx={snapIndicatorPoint.x}
+            cy={snapIndicatorPoint.y}
+            r={14}
+            fill="none"
+            stroke="rgba(34, 211, 238, 0.85)"
+            strokeWidth={4}
+            pointerEvents="none"
+          />
+        ) : null}
+
         {project.wires.map((wire) => (
           <WireView
             key={wire.id}
             wire={wire}
             selected={selectedIds.includes(wire.id)}
             onPointerDown={(event) => beginSelectionDrag(wire.id, event)}
+            onLongPress={handleObjectLongPress(wire.id, "wire")}
           />
         ))}
 
@@ -717,6 +877,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             variant="net-label"
             selected={selectedIds.includes(label.id)}
             onPointerDown={(event) => beginSelectionDrag(label.id, event)}
+            onLongPress={handleObjectLongPress(label.id, "net-label")}
           />
         ))}
 
@@ -727,6 +888,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             variant="text-note"
             selected={selectedIds.includes(note.id)}
             onPointerDown={(event) => beginSelectionDrag(note.id, event)}
+            onLongPress={handleObjectLongPress(note.id, "text-note")}
           />
         ))}
 
@@ -743,10 +905,13 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
               instance={instance}
               selected={selectedIds.includes(instance.id)}
               onPointerDown={(event) => beginSelectionDrag(instance.id, event)}
+              onLongPress={handleObjectLongPress(instance.id, "symbol")}
             />
           );
         })}
       </svg>
+
+      <CanvasHud measureLabel={measureLabel} />
 
       {isCanvasEmpty ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-6 mx-auto max-w-2xl rounded-[2rem] border border-slate-800 bg-slate-950/85 p-6 text-center backdrop-blur">

@@ -4,6 +4,8 @@ Tablet-first features grouped by dependency and impact. The worksheet (KiCad can
 
 **Already shipped (baseline):** glass UI, KiCad tool icons, two-finger pinch/pan, screen-accurate touch placement, wire palette, wire rubber-band preview, SVG/PNG/PDF/JSON export, keyboard shortcuts, floating chrome hides when drawers open.
 
+**Stage 1 shipped:** undo/redo stack + floating buttons + Cmd/Ctrl+Z; pencil vs finger pan mode (settings); double-tap fit view; long-press context menu (duplicate/delete); zoom-to-selection + Fit toolbar; inertial pan; snap ring + vibrate on snap; ruler HUD while drag/wire; optional placement sounds; collapsible tool palettes (wire + select/label/text); safe-area insets on toolbars/HUD/undo.
+
 ---
 
 ## Stage 1 — Core tablet feel & undo
@@ -149,14 +151,14 @@ Not in the three stages above, but aligned with tablet + KiCad workflow:
 
 ## Suggested implementation order (within Stage 1)
 
-1. Undo/redo stack + floating buttons  
-2. Pencil vs finger mode  
-3. Double-tap zoom to fit  
-4. Long-press context menu  
-5. Zoom to selection  
-6. Snap visual + haptic  
-7. Ruler readout while drag/wire  
-8. Inertial pan  
-9. Collapsible palettes for non-wire tools  
+1. ~~Undo/redo stack + floating buttons~~  
+2. ~~Pencil vs finger mode~~  
+3. ~~Double-tap zoom to fit~~  
+4. ~~Long-press context menu~~  
+5. ~~Zoom to selection~~  
+6. ~~Snap visual + haptic~~  
+7. ~~Ruler readout while drag/wire~~  
+8. ~~Inertial pan~~  
+9. ~~Collapsible palettes for non-wire tools~~  
 
-Update this file as items ship (move to **Done** sections or checkboxes if preferred).
+Stage 1 is complete in code; verify on iPad via GitHub Pages after deploy.

@@ -7,6 +7,8 @@ type UseEditorKeyboardShortcutsOptions = {
   onDeleteSelected: () => void;
   onCancelWire: () => void;
   onFinishWire: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
   hasWireDraft: boolean;
 };
 
@@ -24,6 +26,8 @@ export const useEditorKeyboardShortcuts = ({
   onDeleteSelected,
   onCancelWire,
   onFinishWire,
+  onUndo,
+  onRedo,
   hasWireDraft,
 }: UseEditorKeyboardShortcutsOptions) => {
   useEffect(() => {
@@ -56,6 +60,16 @@ export const useEditorKeyboardShortcuts = ({
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          onRedo();
+        } else {
+          onUndo();
+        }
+        return;
+      }
+
       if (event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
@@ -81,7 +95,7 @@ export const useEditorKeyboardShortcuts = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [hasWireDraft, onCancelWire, onDeleteSelected, onFinishWire, onSetTool]);
+  }, [hasWireDraft, onCancelWire, onDeleteSelected, onFinishWire, onRedo, onSetTool, onUndo]);
 };
 
 export default useEditorKeyboardShortcuts;

@@ -1,4 +1,4 @@
-import { type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import type {
@@ -16,8 +16,15 @@ import {
   normalizeWirePoints,
   routeOrthogonalSegment,
 } from "./wireRouting";
+import {
+  cloneEditorHistorySnapshot,
+  pushHistorySnapshot,
+  type EditorHistorySnapshot,
+} from "./editorHistory";
+import { getProjectBounds, getSelectionBounds } from "./projectBounds";
 import { DEFAULT_GRID_SIZE, snapPoint } from "./snapping";
 import { normalizeRotation, toggleMirror } from "./transforms";
+import { getViewportForBounds } from "./viewportFitting";
 
 export type Tool = "select" | "wire" | "label" | "text" | "pan";
 
@@ -84,6 +91,9 @@ export const useEditorState = (
   const [placingSymbolId, setPlacingSymbolIdState] = useState<string | undefined>(undefined);
   const [wireDraft, setWireDraft] = useState<WireDraftState | undefined>(undefined);
   const [wireRoutingMode, setWireRoutingModeState] = useState<WireRoutingMode>("manual");
+  const [historyPast, setHistoryPast] = useState<EditorHistorySnapshot[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<EditorHistorySnapshot[]>([]);
+  const moveHistoryRecordedRef = useRef(false);
 
   const normalizeProjectWires = useCallback(
     (nextProject: SchematicProject): SchematicProject => {
@@ -142,6 +152,43 @@ export const useEditorState = (
     [symbolIndex],
   );
 
+  const captureSnapshot = useCallback((): EditorHistorySnapshot => {
+    return {
+      project: structuredClone(project),
+      selectedIds: [...selectedIds],
+      wireDraft: wireDraft ? structuredClone(wireDraft) : undefined,
+      placingSymbolId,
+    };
+  }, [placingSymbolId, project, selectedIds, wireDraft]);
+
+  const restoreSnapshot = useCallback(
+    (snapshot: EditorHistorySnapshot) => {
+      console.info("[useEditorState] Restoring editor snapshot", { projectId: snapshot.project.id });
+
+      setProject(normalizeProjectWires(snapshot.project));
+      setSelectedIds([...snapshot.selectedIds]);
+      setWireDraft(snapshot.wireDraft ? structuredClone(snapshot.wireDraft) : undefined);
+      setPlacingSymbolIdState(snapshot.placingSymbolId);
+      moveHistoryRecordedRef.current = false;
+    },
+    [normalizeProjectWires],
+  );
+
+  const recordHistory = useCallback(() => {
+    console.info("[useEditorState] Recording editor history snapshot");
+
+    setHistoryPast((currentPast) => pushHistorySnapshot(currentPast, captureSnapshot()));
+    setHistoryFuture([]);
+  }, [captureSnapshot]);
+
+  const clearHistory = useCallback(() => {
+    console.info("[useEditorState] Clearing editor history");
+
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    moveHistoryRecordedRef.current = false;
+  }, []);
+
   useEffect(() => {
     console.info("[useEditorState] Syncing external project into editor", { projectId: initialProject.id });
 
@@ -151,7 +198,8 @@ export const useEditorState = (
     setPlacingSymbolIdState(undefined);
     setActiveTool("pan");
     setWireRoutingModeState("manual");
-  }, [initialProject.id]);
+    clearHistory();
+  }, [clearHistory, initialProject.id, normalizeProjectWires]);
 
   const state = useMemo<EditorState>(
     () => ({
@@ -168,15 +216,23 @@ export const useEditorState = (
   );
 
   const applyProjectUpdate = useCallback(
-    (label: string, updater: (currentProject: SchematicProject) => SchematicProject) => {
-      console.info("[useEditorState] Applying project mutation", { label });
+    (
+      label: string,
+      updater: (currentProject: SchematicProject) => SchematicProject,
+      options?: { record?: boolean },
+    ) => {
+      console.info("[useEditorState] Applying project mutation", { label, record: options?.record });
+
+      if (options?.record !== false) {
+        recordHistory();
+      }
 
       setProject((currentProject) => ({
         ...normalizeProjectWires(updater(currentProject)),
         updatedAt: Date.now(),
       }));
     },
-    [normalizeProjectWires],
+    [normalizeProjectWires, recordHistory],
   );
 
   const buildUpdatedWireDraft = useCallback(
@@ -207,8 +263,104 @@ export const useEditorState = (
     [resolveWireAnchor],
   );
 
+  const canUndo = historyPast.length > 0;
+  const canRedo = historyFuture.length > 0;
+
   return {
     state,
+    canUndo,
+    canRedo,
+    undo: () => {
+      console.info("[useEditorState] Undoing last editor action");
+
+      if (historyPast.length === 0) {
+        return;
+      }
+
+      const previousSnapshot = historyPast[historyPast.length - 1];
+      const currentSnapshot = captureSnapshot();
+
+      setHistoryPast((current) => current.slice(0, -1));
+      setHistoryFuture((current) => [cloneEditorHistorySnapshot(currentSnapshot), ...current]);
+      restoreSnapshot(previousSnapshot);
+    },
+    redo: () => {
+      console.info("[useEditorState] Redoing editor action");
+
+      if (historyFuture.length === 0) {
+        return;
+      }
+
+      const [nextSnapshot, ...remainingFuture] = historyFuture;
+      const currentSnapshot = captureSnapshot();
+
+      setHistoryFuture(remainingFuture);
+      setHistoryPast((current) => pushHistorySnapshot(current, currentSnapshot));
+      restoreSnapshot(nextSnapshot);
+    },
+    fitToContent: (contentSymbolIndex: Record<string, LibrarySymbol>) => {
+      console.info("[useEditorState] Fitting viewport to project content");
+
+      const bounds = getProjectBounds(project, contentSymbolIndex);
+      if (!bounds) {
+        setPanState({ x: 0, y: 0 });
+        setZoomState(1);
+        return;
+      }
+
+      const viewport = getViewportForBounds(bounds);
+      setPanState(viewport.pan);
+      setZoomState(viewport.zoom);
+    },
+    fitToSelection: (contentSymbolIndex: Record<string, LibrarySymbol>) => {
+      console.info("[useEditorState] Fitting viewport to current selection");
+
+      const bounds = getSelectionBounds(project, contentSymbolIndex, selectedIds);
+      if (!bounds) {
+        return;
+      }
+
+      const viewport = getViewportForBounds(bounds);
+      setPanState(viewport.pan);
+      setZoomState(viewport.zoom);
+    },
+    duplicateSelected: () => {
+      console.info("[useEditorState] Duplicating selected object", { selectedIds });
+
+      const selectedId = selectedIds[0];
+      if (!selectedId) {
+        return;
+      }
+
+      const selectedSymbol = project.symbols.find((symbol) => symbol.id === selectedId);
+      if (!selectedSymbol) {
+        return;
+      }
+
+      const symbol = symbolIndex[selectedSymbol.symbolId];
+      const duplicateId = `symbol-${uuidv4()}`;
+
+      recordHistory();
+      applyProjectUpdate(
+        "duplicateSelected",
+        (currentProject) => ({
+          ...currentProject,
+          symbols: [
+            ...currentProject.symbols,
+            {
+              ...selectedSymbol,
+              id: duplicateId,
+              ref: getNextReference(currentProject, symbol?.referencePrefix ?? "U"),
+              x: selectedSymbol.x + (currentProject.gridSize || DEFAULT_GRID_SIZE),
+              y: selectedSymbol.y + (currentProject.gridSize || DEFAULT_GRID_SIZE),
+            },
+          ],
+        }),
+        { record: false },
+      );
+
+      setSelectedIds([duplicateId]);
+    },
     setTool: (tool: Tool) => {
       console.info("[useEditorState] Setting active tool", { tool });
       setActiveTool(tool);
@@ -229,6 +381,7 @@ export const useEditorState = (
       setWireDraft(undefined);
       setPlacingSymbolIdState(undefined);
       setActiveTool("pan");
+      clearHistory();
     },
     setPlacingSymbolId: (symbolId?: string) => {
       console.info("[useEditorState] Setting placing symbol id", { symbolId });
@@ -311,7 +464,14 @@ export const useEditorState = (
         return;
       }
 
-      applyProjectUpdate("moveSelected", (currentProject) => ({
+      if (!moveHistoryRecordedRef.current) {
+        recordHistory();
+        moveHistoryRecordedRef.current = true;
+      }
+
+      applyProjectUpdate(
+        "moveSelected",
+        (currentProject) => ({
         ...currentProject,
         symbols: currentProject.symbols.map((symbol) =>
           selectedIds.includes(symbol.id) ? { ...symbol, x: symbol.x + dx, y: symbol.y + dy } : symbol,
@@ -325,10 +485,14 @@ export const useEditorState = (
         textNotes: currentProject.textNotes.map((note) =>
           selectedIds.includes(note.id) ? { ...note, x: note.x + dx, y: note.y + dy } : note,
         ),
-      }));
+      }),
+        { record: false },
+      );
     },
     snapSelectedToGrid: () => {
       console.info("[useEditorState] Snapping selected objects to grid", { selectedIds });
+
+      moveHistoryRecordedRef.current = false;
 
       applyProjectUpdate("snapSelectedToGrid", (currentProject) => ({
         ...currentProject,
@@ -352,7 +516,9 @@ export const useEditorState = (
             ? { ...note, ...snapPoint({ x: note.x, y: note.y }, currentProject.gridSize) }
             : note,
         ),
-      }));
+      }),
+        { record: false },
+      );
     },
     rotateSelected: () => {
       console.info("[useEditorState] Rotating selected symbols", { selectedIds });
