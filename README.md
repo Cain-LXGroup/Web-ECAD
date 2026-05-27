@@ -92,6 +92,10 @@ The build picks the repository name automatically from `GITHUB_REPOSITORY`, so a
 | `Enter` | Place / finish wire (while drafting) |
 | `Esc` | Cancel wire draft |
 | `Delete` | Delete selection |
+| `Ctrl/Cmd+C` | Copy selection |
+| `Ctrl/Cmd+X` | Cut selection |
+| `Ctrl/Cmd+V` | Paste selection (offset) |
+| `Shift` + tap | Add to selection (also second-tap toggle on tablet) |
 
 ## Export (Workspace menu)
 
