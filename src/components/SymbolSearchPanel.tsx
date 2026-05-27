@@ -1,5 +1,6 @@
 import type { LibrarySymbol } from "../library/types";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { schematicColorVar } from "../theme/schematicTheme";
 import { BubbleButton } from "./ui/BubbleButton";
 import { glassPanelInset } from "./ui/uiStyles";
 
@@ -59,7 +60,7 @@ export const SymbolSearchPanel = ({
     const starred = starredSymbolIds.includes(symbol.id);
 
     return (
-      <li key={symbol.id} className="border-b border-slate-800/80 last:border-b-0">
+      <li key={symbol.id} className="border-b border-[var(--chrome-list-divider)] last:border-b-0">
         <div
           className="px-4 py-3"
           style={{
@@ -85,7 +86,7 @@ export const SymbolSearchPanel = ({
               <span
                 className="font-bold leading-tight"
                 style={{
-                  color: kicadSchematicTheme.valueText,
+                  color: schematicColorVar("valueText"),
                   fontFamily: kicadSchematicTheme.fontFamily,
                   fontSize: "1.05rem",
                 }}
@@ -95,14 +96,14 @@ export const SymbolSearchPanel = ({
               <span
                 className="font-semibold"
                 style={{
-                  color: kicadSchematicTheme.refText,
+                  color: schematicColorVar("refText"),
                   fontFamily: kicadSchematicTheme.fontFamily,
                   fontSize: "0.95rem",
                 }}
               >
                 {symbol.referencePrefix ? `${symbol.referencePrefix}?` : symbol.name} · {symbol.name}
               </span>
-              <span className="text-xs text-slate-400">{secondaryLabel}</span>
+              <span className="text-xs text-[var(--chrome-muted)]">{secondaryLabel}</span>
             </button>
           </div>
 
@@ -122,25 +123,25 @@ export const SymbolSearchPanel = ({
                 </div>
                 {manufacturer ? (
                   <div>
-                    <dt className="text-slate-500">Manufacturer</dt>
+                    <dt className="text-[var(--chrome-faint)]">Manufacturer</dt>
                     <dd>{manufacturer}</dd>
                   </div>
                 ) : null}
                 {part ? (
                   <div>
-                    <dt className="text-slate-500">Part</dt>
+                    <dt className="text-[var(--chrome-faint)]">Part</dt>
                     <dd>{part}</dd>
                   </div>
                 ) : null}
                 {lcsc ? (
                   <div>
-                    <dt className="text-slate-500">LCSC</dt>
+                    <dt className="text-[var(--chrome-faint)]">LCSC</dt>
                     <dd>{lcsc}</dd>
                   </div>
                 ) : null}
                 {description ? (
                   <div>
-                    <dt className="text-slate-500">Description</dt>
+                    <dt className="text-[var(--chrome-faint)]">Description</dt>
                     <dd className="max-h-12 overflow-hidden text-ellipsis">{description}</dd>
                   </div>
                 ) : null}
@@ -173,7 +174,10 @@ export const SymbolSearchPanel = ({
 
       <div
         className="min-h-0 flex-1 overflow-y-auto rounded-2xl border"
-        style={{ borderColor: "rgba(136, 192, 112, 0.18)", backgroundColor: kicadSchematicTheme.background }}
+        style={{
+          borderColor: "rgba(136, 192, 112, 0.18)",
+          backgroundColor: schematicColorVar("background"),
+        }}
       >
         {favoriteSymbols.length > 0 ? (
           <div className="border-b border-slate-800/80">

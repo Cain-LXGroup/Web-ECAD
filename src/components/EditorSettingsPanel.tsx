@@ -4,7 +4,7 @@ import {
   MIN_SCHEMATIC_TEXT_SIZE,
 } from "../editor/schematicTextSizing";
 import { GlassPanel } from "./ui/GlassPanel";
-import { glassPanelInset } from "./ui/uiStyles";
+import { chromeInput, glassPanelInset } from "./ui/uiStyles";
 
 type EditorSettingsPanelProps = {
   fingerPansOnly: boolean;
@@ -83,9 +83,9 @@ export const EditorSettingsPanel = ({
         </label>
 
         <label className="block space-y-2 text-sm text-[var(--chrome-text)]">
-          <span>Appearance</span>
+          <span>Chrome theme</span>
           <select
-            className="w-full rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-base text-white"
+            className={`${chromeInput} !py-2`}
             value={colorScheme}
             onChange={(event) => onColorSchemeChange(event.target.value as ColorScheme)}
           >

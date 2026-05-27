@@ -1,4 +1,4 @@
-import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { getResolvedSchematicColor } from "../theme/schematicTheme";
 import { downloadBlob } from "./downloadFile";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -16,7 +16,7 @@ const prepareExportSvgClone = (svg: SVGSVGElement): SVGSVGElement => {
   background.setAttribute("y", String(viewBox.y));
   background.setAttribute("width", String(viewBox.width));
   background.setAttribute("height", String(viewBox.height));
-  background.setAttribute("fill", kicadSchematicTheme.background);
+  background.setAttribute("fill", getResolvedSchematicColor("background"));
   clone.insertBefore(background, clone.firstChild);
 
   return clone;
@@ -66,7 +66,7 @@ export const rasterizeSvgElement = async (
       throw new Error("Canvas 2D context is unavailable.");
     }
 
-    context.fillStyle = kicadSchematicTheme.background;
+    context.fillStyle = getResolvedSchematicColor("background");
     context.fillRect(0, 0, pixelWidth, pixelHeight);
     context.drawImage(image, 0, 0, pixelWidth, pixelHeight);
 

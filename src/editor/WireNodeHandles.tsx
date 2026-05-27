@@ -2,6 +2,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 
 import type { Point, Wire } from "../library/types";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { schematicColorVar } from "../theme/schematicTheme";
 
 export type WireNodeSelection = {
   wireId: string;
@@ -59,8 +60,8 @@ export const WireNodeHandles = ({
               cx={point.x}
               cy={point.y}
               r={isSelected ? SELECTED_NODE_RADIUS : NODE_RADIUS}
-              fill={isSelected ? kicadSchematicTheme.selection : "rgba(34, 211, 238, 0.92)"}
-              stroke={isSelected ? "#ffffff" : "#0f172a"}
+              fill={isSelected ? schematicColorVar("selection") : schematicColorVar("wireNode")}
+              stroke={isSelected ? "#ffffff" : schematicColorVar("background")}
               strokeWidth={isSelected ? 4 : 3}
               pointerEvents="none"
             />

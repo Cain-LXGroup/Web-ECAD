@@ -1,6 +1,7 @@
 import type { LibrarySymbol } from "../library/types";
 import { SymbolInstanceView } from "../editor/SymbolInstanceView";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { schematicColorVar } from "../theme/schematicTheme";
 
 export type ComponentMetadataRow = {
   label: string;
@@ -73,8 +74,8 @@ export const ComponentInspector = ({
         className="flex min-h-40 items-center justify-center rounded-2xl border border-dashed p-4 text-center text-sm"
         style={{
           borderColor: "rgba(192, 112, 112, 0.35)",
-          backgroundColor: kicadSchematicTheme.background,
-          color: "#9aa3b2",
+          backgroundColor: schematicColorVar("background"),
+          color: "var(--chrome-muted)",
         }}
       >
         {emptyMessage}
@@ -91,14 +92,14 @@ export const ComponentInspector = ({
       className="overflow-hidden rounded-2xl border"
       style={{
         borderColor: "rgba(192, 112, 112, 0.35)",
-        backgroundColor: kicadSchematicTheme.background,
+        backgroundColor: schematicColorVar("background"),
       }}
     >
       <div className="px-4 pt-4">
         <p
           className="font-bold leading-none"
           style={{
-            color: kicadSchematicTheme.refText,
+            color: schematicColorVar("refText"),
             fontFamily: kicadSchematicTheme.fontFamily,
             fontSize: "1.35rem",
           }}
@@ -108,14 +109,14 @@ export const ComponentInspector = ({
         <p
           className="mt-2 font-bold leading-tight break-words"
           style={{
-            color: kicadSchematicTheme.valueText,
+            color: schematicColorVar("valueText"),
             fontFamily: kicadSchematicTheme.fontFamily,
             fontSize: "1.2rem",
           }}
         >
           {displayValue}
         </p>
-        <p className="mt-2 text-xs uppercase tracking-[0.12em] text-slate-400">{symbol.libraryName}</p>
+        <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[var(--chrome-muted)]">{symbol.libraryName}</p>
       </div>
 
       <div className="px-3 pb-3 pt-2">
@@ -130,7 +131,7 @@ export const ComponentInspector = ({
             y={-symbol.bounds.maxY - 120}
             width={symbol.bounds.maxX - symbol.bounds.minX + 200}
             height={symbol.bounds.maxY - symbol.bounds.minY + 220}
-            fill={kicadSchematicTheme.background}
+            fill={schematicColorVar("background")}
           />
           <SymbolInstanceView
             symbol={symbol}
@@ -152,24 +153,24 @@ export const ComponentInspector = ({
       </div>
 
       {metadataRows.length > 0 ? (
-        <div className="space-y-3 border-t border-slate-700/80 px-4 py-4">
+        <div className="space-y-3 border-t border-[var(--chrome-list-divider)] px-4 py-4">
           {metadataRows.map((row) => (
             <div key={row.label}>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{row.label}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--chrome-faint)]">{row.label}</p>
               {row.href ? (
                 <a
                   className="mt-1 block break-all text-sm font-medium underline decoration-cyan-500/50 underline-offset-2 hover:text-cyan-200"
                   href={row.href}
                   rel="noopener noreferrer"
                   target="_blank"
-                  style={{ color: kicadSchematicTheme.valueText, fontFamily: kicadSchematicTheme.fontFamily }}
+                  style={{ color: schematicColorVar("valueText"), fontFamily: kicadSchematicTheme.fontFamily }}
                 >
                   {row.value}
                 </a>
               ) : (
                 <p
                   className="mt-1 break-words text-sm font-medium"
-                  style={{ color: kicadSchematicTheme.valueText, fontFamily: kicadSchematicTheme.fontFamily }}
+                  style={{ color: schematicColorVar("valueText"), fontFamily: kicadSchematicTheme.fontFamily }}
                 >
                   {row.value}
                 </p>

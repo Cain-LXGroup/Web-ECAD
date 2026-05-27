@@ -2,7 +2,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useLongPress } from "../hooks/useLongPress";
 import type { Wire } from "../library/types";
-import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { schematicColorVar } from "../theme/schematicTheme";
 
 type WireViewProps = {
   wire: Wire;
@@ -60,10 +60,10 @@ export const WireView = ({
         fill="none"
         stroke={
           selected
-            ? kicadSchematicTheme.wireSelected
+            ? schematicColorVar("wireSelected")
             : netHighlighted
-              ? "rgba(250, 204, 21, 0.95)"
-              : kicadSchematicTheme.wire
+              ? schematicColorVar("netHighlight")
+              : schematicColorVar("wire")
         }
         strokeWidth={selected ? 6 : netHighlighted ? 5 : 4}
         strokeDasharray={dashed ? "14 10" : undefined}
