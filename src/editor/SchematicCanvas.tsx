@@ -29,11 +29,7 @@ import {
 } from "./canvasViewport";
 import { CanvasHud } from "../components/CanvasHud";
 import { vibrateSnap } from "../lib/feedback";
-import {
-  clientDeltaToWorldDelta,
-  clientPointToWorld,
-  getCoalescedClientPoints,
-} from "./svgCoordinates";
+import { clientDeltaToWorldDelta, clientPointToWorld } from "./svgCoordinates";
 
 const TAP_DRAG_THRESHOLD_PX = 12;
 const DOUBLE_TAP_MS = 320;
@@ -181,6 +177,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
   const [snapIndicatorPoint, setSnapIndicatorPoint] = useState<Point | null>(null);
   const [measureLabel, setMeasureLabel] = useState<string | undefined>(undefined);
   const dragStateRef = useRef<DragState | null>(null);
+  /** Sync client anchor for drags — avoids stale React state when pen coalesced events replay history. */
+  const dragLastClientRef = useRef<Point | null>(null);
   const lastTapRef = useRef<{ time: number; x: number; y: number } | undefined>(undefined);
   const panVelocityRef = useRef<Point>({ x: 0, y: 0 });
   const inertiaFrameRef = useRef<number | undefined>(undefined);
@@ -249,6 +247,40 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
   const getCanvasPoint = (event: ReactPointerEvent<SVGElement>): Point | null => {
     return getCanvasPointFromClient(event.clientX, event.clientY);
+  };
+
+  const setDragLastClient = (point: Point) => {
+    dragLastClientRef.current = point;
+  };
+
+  const clearDragLastClient = () => {
+    dragLastClientRef.current = null;
+  };
+
+  const applyClientDragStep = (
+    svg: SVGSVGElement,
+    clientX: number,
+    clientY: number,
+  ): Point | null => {
+    const lastClient = dragLastClientRef.current;
+    if (!lastClient) {
+      return null;
+    }
+
+    const worldDelta = clientDeltaToWorldDelta(
+      svg,
+      lastClient.x,
+      lastClient.y,
+      clientX,
+      clientY,
+    );
+
+    if (!worldDelta) {
+      return null;
+    }
+
+    dragLastClientRef.current = { x: clientX, y: clientY };
+    return worldDelta;
   };
 
   const capturePointerOnSvg = (event: ReactPointerEvent<SVGElement>) => {
@@ -415,6 +447,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     event.stopPropagation();
     capturePointerOnSvg(event);
     stopInertia();
+    setDragLastClient({ x: event.clientX, y: event.clientY });
     setDragState({
       pointerId: event.pointerId,
       mode: "move-selection",
@@ -465,6 +498,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
   ) => {
     stopInertia();
     capturePointerOnSvg(event);
+    setDragLastClient({ x: event.clientX, y: event.clientY });
     setDragState({
       pointerId: event.pointerId,
       mode: "canvas-gesture",
@@ -595,27 +629,13 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
-    const coalescedClientPoints = getCoalescedClientPoints(event.nativeEvent);
-
     if (dragState.mode === "move-selection") {
-      let lastClient = dragState.lastClient;
-
-      for (const clientPoint of coalescedClientPoints) {
-        const worldDelta = clientDeltaToWorldDelta(
-          svg,
-          lastClient.x,
-          lastClient.y,
-          clientPoint.x,
-          clientPoint.y,
-        );
-
-        if (!worldDelta) {
-          continue;
-        }
-
-        onMoveSelected(worldDelta.x, worldDelta.y);
-        lastClient = clientPoint;
+      const worldDelta = applyClientDragStep(svg, event.clientX, event.clientY);
+      if (!worldDelta) {
+        return;
       }
+
+      onMoveSelected(worldDelta.x, worldDelta.y);
 
       const canvasPoint = getCanvasPoint(event);
       if (!canvasPoint) {
@@ -627,7 +647,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
         currentDragState
           ? {
               ...currentDragState,
-              lastClient,
+              lastClient: { x: event.clientX, y: event.clientY },
               lastWorld: canvasPoint,
             }
           : currentDragState,
@@ -638,50 +658,30 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     const shouldPanCanvas =
       dragState.mode === "canvas-gesture" &&
       (dragState.isPanning ||
-        getClientDistance(dragState.startClient, {
-          x: coalescedClientPoints[coalescedClientPoints.length - 1]?.x ?? event.clientX,
-          y: coalescedClientPoints[coalescedClientPoints.length - 1]?.y ?? event.clientY,
-        }) >= TAP_DRAG_THRESHOLD_PX);
+        getClientDistance(dragState.startClient, { x: event.clientX, y: event.clientY }) >=
+          TAP_DRAG_THRESHOLD_PX);
 
     if (!shouldPanCanvas) {
       return;
     }
 
-    let lastClient = dragState.lastClient;
-    let lastWorldDelta: Point | null = null;
-
-    for (const clientPoint of coalescedClientPoints) {
-      const worldDelta = clientDeltaToWorldDelta(
-        svg,
-        lastClient.x,
-        lastClient.y,
-        clientPoint.x,
-        clientPoint.y,
-      );
-
-      if (!worldDelta) {
-        continue;
-      }
-
-      lastWorldDelta = worldDelta;
-      onSetPan((currentPan) => ({
-        x: currentPan.x - worldDelta.x,
-        y: currentPan.y - worldDelta.y,
-      }));
-      lastClient = clientPoint;
-    }
-
-    if (!lastWorldDelta) {
+    const worldDelta = applyClientDragStep(svg, event.clientX, event.clientY);
+    if (!worldDelta) {
       return;
     }
 
-    panVelocityRef.current = lastWorldDelta;
+    panVelocityRef.current = worldDelta;
+
+    onSetPan((currentPan) => ({
+      x: currentPan.x - worldDelta.x,
+      y: currentPan.y - worldDelta.y,
+    }));
 
     setDragState((currentDragState) =>
       currentDragState
         ? {
             ...currentDragState,
-            lastClient,
+            lastClient: { x: event.clientX, y: event.clientY },
             isPanning: true,
           }
         : currentDragState,
@@ -746,6 +746,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       }
     }
 
+    clearDragLastClient();
     setDragState(null);
     setMeasureLabel(undefined);
     setSnapIndicatorPoint(null);
