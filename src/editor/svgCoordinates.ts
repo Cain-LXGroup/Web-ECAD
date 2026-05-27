@@ -44,3 +44,18 @@ export const clientDeltaToWorldDelta = (
     y: toWorld.y - fromWorld.y,
   };
 };
+
+/** High-frequency pen strokes can coalesce moves; apply each step for 1:1 tracking. */
+export const getCoalescedClientPoints = (nativeEvent: PointerEvent): Point[] => {
+  if (typeof nativeEvent.getCoalescedEvents === "function") {
+    const coalescedEvents = nativeEvent.getCoalescedEvents();
+    if (coalescedEvents.length > 0) {
+      return coalescedEvents.map((coalesced) => ({
+        x: coalesced.clientX,
+        y: coalesced.clientY,
+      }));
+    }
+  }
+
+  return [{ x: nativeEvent.clientX, y: nativeEvent.clientY }];
+};

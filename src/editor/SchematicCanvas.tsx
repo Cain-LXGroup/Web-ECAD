@@ -29,7 +29,11 @@ import {
 } from "./canvasViewport";
 import { CanvasHud } from "../components/CanvasHud";
 import { vibrateSnap } from "../lib/feedback";
-import { clientDeltaToWorldDelta, clientPointToWorld } from "./svgCoordinates";
+import {
+  clientDeltaToWorldDelta,
+  clientPointToWorld,
+  getCoalescedClientPoints,
+} from "./svgCoordinates";
 
 const TAP_DRAG_THRESHOLD_PX = 12;
 const DOUBLE_TAP_MS = 320;
@@ -245,6 +249,23 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     return getCanvasPointFromClient(event.clientX, event.clientY);
   };
 
+  const capturePointerOnSvg = (event: ReactPointerEvent<SVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return;
+    }
+
+    if (shouldCapturePointer(event)) {
+      event.preventDefault();
+    }
+
+    try {
+      svg.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer may already be released on some browsers.
+    }
+  };
+
   const getSvgRect = () => svgRef.current?.getBoundingClientRect() ?? null;
 
   const applyViewport = (nextPan: Point, nextZoom: number) => {
@@ -390,12 +411,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
     onSelectObject(id);
     event.stopPropagation();
-
-    if (shouldCapturePointer(event)) {
-      event.preventDefault();
-    }
-
-    event.currentTarget.setPointerCapture(event.pointerId);
+    capturePointerOnSvg(event);
     stopInertia();
     setDragState({
       pointerId: event.pointerId,
@@ -446,7 +462,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     tapAction?: CanvasTapAction,
   ) => {
     stopInertia();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    capturePointerOnSvg(event);
     setDragState({
       pointerId: event.pointerId,
       mode: "canvas-gesture",
@@ -577,21 +593,39 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
+    const coalescedClientPoints = getCoalescedClientPoints(event.nativeEvent);
+
     if (dragState.mode === "move-selection") {
+      let lastClient = dragState.lastClient;
+
+      for (const clientPoint of coalescedClientPoints) {
+        const worldDelta = clientDeltaToWorldDelta(
+          svg,
+          lastClient.x,
+          lastClient.y,
+          clientPoint.x,
+          clientPoint.y,
+        );
+
+        if (!worldDelta) {
+          continue;
+        }
+
+        onMoveSelected(worldDelta.x, worldDelta.y);
+        lastClient = clientPoint;
+      }
+
       const canvasPoint = getCanvasPoint(event);
       if (!canvasPoint) {
         return;
       }
 
-      const deltaX = canvasPoint.x - dragState.lastWorld.x;
-      const deltaY = canvasPoint.y - dragState.lastWorld.y;
-      onMoveSelected(deltaX, deltaY);
       setMeasureLabel(formatMeasureLabel(dragState.originWorld, canvasPoint));
       setDragState((currentDragState) =>
         currentDragState
           ? {
               ...currentDragState,
-              lastClient: { x: event.clientX, y: event.clientY },
+              lastClient,
               lastWorld: canvasPoint,
             }
           : currentDragState,
@@ -602,36 +636,50 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     const shouldPanCanvas =
       dragState.mode === "canvas-gesture" &&
       (dragState.isPanning ||
-        getClientDistance(dragState.startClient, { x: event.clientX, y: event.clientY }) >=
-          TAP_DRAG_THRESHOLD_PX);
+        getClientDistance(dragState.startClient, {
+          x: coalescedClientPoints[coalescedClientPoints.length - 1]?.x ?? event.clientX,
+          y: coalescedClientPoints[coalescedClientPoints.length - 1]?.y ?? event.clientY,
+        }) >= TAP_DRAG_THRESHOLD_PX);
 
     if (!shouldPanCanvas) {
       return;
     }
 
-    const worldDelta = clientDeltaToWorldDelta(
-      svg,
-      dragState.lastClient.x,
-      dragState.lastClient.y,
-      event.clientX,
-      event.clientY,
-    );
+    let lastClient = dragState.lastClient;
+    let lastWorldDelta: Point | null = null;
 
-    if (!worldDelta) {
+    for (const clientPoint of coalescedClientPoints) {
+      const worldDelta = clientDeltaToWorldDelta(
+        svg,
+        lastClient.x,
+        lastClient.y,
+        clientPoint.x,
+        clientPoint.y,
+      );
+
+      if (!worldDelta) {
+        continue;
+      }
+
+      lastWorldDelta = worldDelta;
+      onSetPan((currentPan) => ({
+        x: currentPan.x - worldDelta.x,
+        y: currentPan.y - worldDelta.y,
+      }));
+      lastClient = clientPoint;
+    }
+
+    if (!lastWorldDelta) {
       return;
     }
 
-    panVelocityRef.current = worldDelta;
+    panVelocityRef.current = lastWorldDelta;
 
-    onSetPan((currentPan) => ({
-      x: currentPan.x - worldDelta.x,
-      y: currentPan.y - worldDelta.y,
-    }));
     setDragState((currentDragState) =>
       currentDragState
         ? {
             ...currentDragState,
-            lastClient: { x: event.clientX, y: event.clientY },
+            lastClient,
             isPanning: true,
           }
         : currentDragState,
@@ -687,8 +735,13 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       }
     }
 
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+    const svg = svgRef.current;
+    if (svg?.hasPointerCapture(event.pointerId)) {
+      try {
+        svg.releasePointerCapture(event.pointerId);
+      } catch {
+        // Pointer may already be released on some browsers.
+      }
     }
 
     setDragState(null);
