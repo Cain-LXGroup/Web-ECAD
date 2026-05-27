@@ -2,6 +2,10 @@
 
 Tablet-first, offline-capable schematic templating PWA built with Vite, React, and IndexedDB.
 
+## Roadmap
+
+Tablet gestures, pencil modes, undo, minimap, and productivity features are planned in three stages. See **[ROADMAP.md](./ROADMAP.md)** for the full rollout.
+
 ## Local development
 
 ```bash

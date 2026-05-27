@@ -22,16 +22,28 @@ import { WireView } from "./WireView";
 import {
   getPinchMetrics,
   getViewBox,
-  getViewportFromPinch,
+  getWorldPointFromViewport,
   getZoomAtClientPoint,
+  getZoomOnlyViewportFromPinch,
 } from "./canvasViewport";
 import { clientDeltaToWorldDelta, clientPointToWorld } from "./svgCoordinates";
 
+const TAP_DRAG_THRESHOLD_PX = 12;
+
+type CanvasTapAction =
+  | { kind: "wire" }
+  | { kind: "label" }
+  | { kind: "text" }
+  | { kind: "clear-selection" };
+
 type DragState = {
   pointerId: number;
-  mode: "move-selection" | "pan";
+  mode: "move-selection" | "pan" | "canvas-gesture";
   lastClient: Point;
   lastWorld: Point;
+  startClient: Point;
+  isPanning: boolean;
+  tapAction?: CanvasTapAction;
 };
 
 type PinchGestureState = {
@@ -40,6 +52,7 @@ type PinchGestureState = {
   startMidpoint: Point;
   startZoom: number;
   startPan: Point;
+  anchorWorld: Point;
 };
 
 export type SchematicCanvasHandle = {
@@ -96,6 +109,10 @@ const promptForText = (variant: "label" | "text"): string | null => {
 
 const shouldCapturePointer = (event: ReactPointerEvent<SVGElement>): boolean => {
   return event.pointerType === "touch" || event.pointerType === "pen";
+};
+
+const getClientDistance = (from: Point, to: Point): number => {
+  return Math.hypot(to.x - from.x, to.y - from.y);
 };
 
 export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvasProps>(function SchematicCanvas(
@@ -202,12 +219,27 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     }
 
     setDragState(null);
+    const svgRect = getSvgRect();
+    if (!svgRect) {
+      return;
+    }
+
+    const startPan = panRef.current;
+    const startZoom = zoomRef.current;
+
     pinchGestureRef.current = {
       pointerIds: [pointers[0].pointerId, pointers[1].pointerId],
       startDistance: metrics.distance,
       startMidpoint: metrics.midpoint,
-      startZoom: zoomRef.current,
-      startPan: panRef.current,
+      startZoom,
+      startPan,
+      anchorWorld: getWorldPointFromViewport(
+        metrics.midpoint.x,
+        metrics.midpoint.y,
+        startPan,
+        startZoom,
+        svgRect,
+      ),
     };
   };
 
@@ -227,19 +259,16 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     }
 
     const metrics = getPinchMetrics(pointerPoints);
-    const svg = svgRef.current;
-    if (!metrics || !svg) {
+    if (!metrics) {
       return;
     }
 
-    const nextViewport = getViewportFromPinch({
-      svg,
+    const nextViewport = getZoomOnlyViewportFromPinch({
       startZoom: gesture.startZoom,
-      startPan: gesture.startPan,
-      startMidpoint: gesture.startMidpoint,
       startDistance: gesture.startDistance,
-      currentMidpoint: metrics.midpoint,
       currentDistance: metrics.distance,
+      startMidpoint: gesture.startMidpoint,
+      anchorWorld: gesture.anchorWorld,
       svgRect,
     });
 
@@ -292,6 +321,56 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       mode: "move-selection",
       lastClient: { x: event.clientX, y: event.clientY },
       lastWorld: canvasPoint,
+      startClient: { x: event.clientX, y: event.clientY },
+      isPanning: true,
+    });
+  };
+
+  const executeCanvasTap = (action: CanvasTapAction, canvasPoint: Point) => {
+    console.info("[SchematicCanvas] Executing deferred canvas tap", { kind: action.kind });
+
+    if (action.kind === "wire") {
+      if (wireDraft && wireDraft.points.length > 0) {
+        onAddWirePoint(canvasPoint);
+      } else {
+        onStartWire(canvasPoint);
+      }
+      return;
+    }
+
+    if (action.kind === "label") {
+      const labelText = promptForText("label");
+      if (labelText) {
+        onAddNetLabel(labelText, canvasPoint);
+      }
+      return;
+    }
+
+    if (action.kind === "text") {
+      const noteText = promptForText("text");
+      if (noteText) {
+        onAddTextNote(noteText, canvasPoint);
+      }
+      return;
+    }
+
+    onClearSelection();
+  };
+
+  const beginCanvasGesture = (
+    event: ReactPointerEvent<SVGSVGElement>,
+    canvasPoint: Point,
+    tapAction?: CanvasTapAction,
+  ) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragState({
+      pointerId: event.pointerId,
+      mode: "canvas-gesture",
+      lastClient: { x: event.clientX, y: event.clientY },
+      lastWorld: canvasPoint,
+      startClient: { x: event.clientX, y: event.clientY },
+      isPanning: activeTool === "pan",
+      tapAction,
     });
   };
 
@@ -328,42 +407,26 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     }
 
     if (activeTool === "wire") {
-      if (wireDraft && wireDraft.points.length > 0) {
-        onAddWirePoint(canvasPoint);
-      } else {
-        onStartWire(canvasPoint);
-      }
+      beginCanvasGesture(event, canvasPoint, { kind: "wire" });
       return;
     }
 
     if (activeTool === "label") {
-      const labelText = promptForText("label");
-      if (labelText) {
-        onAddNetLabel(labelText, canvasPoint);
-      }
+      beginCanvasGesture(event, canvasPoint, { kind: "label" });
       return;
     }
 
     if (activeTool === "text") {
-      const noteText = promptForText("text");
-      if (noteText) {
-        onAddTextNote(noteText, canvasPoint);
-      }
+      beginCanvasGesture(event, canvasPoint, { kind: "text" });
       return;
     }
 
     if (activeTool === "pan") {
-      event.currentTarget.setPointerCapture(event.pointerId);
-      setDragState({
-        pointerId: event.pointerId,
-        mode: "pan",
-        lastClient: { x: event.clientX, y: event.clientY },
-        lastWorld: canvasPoint,
-      });
+      beginCanvasGesture(event, canvasPoint);
       return;
     }
 
-    onClearSelection();
+    beginCanvasGesture(event, canvasPoint, { kind: "clear-selection" });
   };
 
   const handleCanvasPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -416,32 +479,41 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
-    if (dragState.mode === "pan") {
-      const worldDelta = clientDeltaToWorldDelta(
-        svg,
-        dragState.lastClient.x,
-        dragState.lastClient.y,
-        event.clientX,
-        event.clientY,
-      );
+    const shouldPanCanvas =
+      dragState.mode === "canvas-gesture" &&
+      (dragState.isPanning ||
+        getClientDistance(dragState.startClient, { x: event.clientX, y: event.clientY }) >=
+          TAP_DRAG_THRESHOLD_PX);
 
-      if (!worldDelta) {
-        return;
-      }
-
-      onSetPan((currentPan) => ({
-        x: currentPan.x - worldDelta.x,
-        y: currentPan.y - worldDelta.y,
-      }));
-      setDragState((currentDragState) =>
-        currentDragState
-          ? {
-              ...currentDragState,
-              lastClient: { x: event.clientX, y: event.clientY },
-            }
-          : currentDragState,
-      );
+    if (!shouldPanCanvas) {
+      return;
     }
+
+    const worldDelta = clientDeltaToWorldDelta(
+      svg,
+      dragState.lastClient.x,
+      dragState.lastClient.y,
+      event.clientX,
+      event.clientY,
+    );
+
+    if (!worldDelta) {
+      return;
+    }
+
+    onSetPan((currentPan) => ({
+      x: currentPan.x - worldDelta.x,
+      y: currentPan.y - worldDelta.y,
+    }));
+    setDragState((currentDragState) =>
+      currentDragState
+        ? {
+            ...currentDragState,
+            lastClient: { x: event.clientX, y: event.clientY },
+            isPanning: true,
+          }
+        : currentDragState,
+    );
   };
 
   const handleCanvasPointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -462,6 +534,12 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
     if (dragState.mode === "move-selection") {
       onSnapSelectedToGrid();
+    } else if (
+      dragState.mode === "canvas-gesture" &&
+      !dragState.isPanning &&
+      dragState.tapAction
+    ) {
+      executeCanvasTap(dragState.tapAction, dragState.lastWorld);
     }
 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {

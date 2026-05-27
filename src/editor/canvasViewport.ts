@@ -112,42 +112,50 @@ export const getPinchMetrics = (points: Point[]) => {
   return { midpoint, distance };
 };
 
-export const getViewportFromPinch = ({
-  svg,
+/** World point under a client coordinate for a known pan/zoom (stable during gestures). */
+export const getWorldPointFromViewport = (
+  clientX: number,
+  clientY: number,
+  pan: Point,
+  zoom: number,
+  rect: DOMRect,
+): Point => {
+  console.info("[canvasViewport] Resolving world point from viewport state", { clientX, clientY, zoom });
+
+  return clientToWorld(clientX, clientY, rect, getViewBox(zoom, pan));
+};
+
+/**
+ * Pinch adjusts zoom only, anchored at the gesture start point on screen.
+ * Pan drift from moving the pinch centroid is intentionally not applied.
+ */
+export const getZoomOnlyViewportFromPinch = ({
   startZoom,
-  startPan,
-  startMidpoint,
   startDistance,
-  currentMidpoint,
   currentDistance,
+  startMidpoint,
+  anchorWorld,
   svgRect,
 }: {
-  svg: SVGSVGElement;
   startZoom: number;
-  startPan: Point;
-  startMidpoint: Point;
   startDistance: number;
-  currentMidpoint: Point;
   currentDistance: number;
+  startMidpoint: Point;
+  anchorWorld: Point;
   svgRect: DOMRect;
 }): { pan: Point; zoom: number } => {
-  console.info("[canvasViewport] Calculating viewport from pinch gesture", {
+  console.info("[canvasViewport] Calculating zoom-only viewport from pinch", {
     startZoom,
     startDistance,
     currentDistance,
   });
-
-  const anchorWorld = clientPointToWorld(svg, startMidpoint.x, startMidpoint.y);
-  if (!anchorWorld) {
-    return { pan: startPan, zoom: startZoom };
-  }
 
   const distanceRatio = startDistance > 0 ? currentDistance / startDistance : 1;
   const nextZoom = clampZoom(startZoom * distanceRatio);
 
   return {
     zoom: nextZoom,
-    pan: getPanKeepingWorldUnderClient(anchorWorld, currentMidpoint.x, currentMidpoint.y, nextZoom, svgRect),
+    pan: getPanKeepingWorldUnderClient(anchorWorld, startMidpoint.x, startMidpoint.y, nextZoom, svgRect),
   };
 };
 
