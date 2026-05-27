@@ -22,6 +22,8 @@ import { GlassPanel } from "../components/ui/GlassPanel";
 import { SheetDrawer } from "../components/ui/SheetDrawer";
 import { BubbleButton } from "../components/ui/BubbleButton";
 import { SchematicCanvas, type SchematicCanvasHandle } from "../editor/SchematicCanvas";
+import { computeNetHighlight } from "../editor/netHighlight";
+import { createDefaultSheet, normalizeProject } from "../editor/projectSheets";
 import { DEFAULT_GRID_SIZE } from "../editor/snapping";
 import { useEditorState } from "../editor/useEditorState";
 import { exportBackup, importBackup } from "../export/backup";
@@ -48,18 +50,21 @@ const createBlankProject = (name: string): SchematicProject => {
   console.info("[App] Creating blank project", { name });
 
   const timestamp = Date.now();
+  const defaultSheet = createDefaultSheet("Sheet 1");
 
-  return {
+  return normalizeProject({
     id: uuidv4(),
     name,
     createdAt: timestamp,
     updatedAt: timestamp,
-    symbols: [],
-    wires: [],
-    netLabels: [],
-    textNotes: [],
+    symbols: defaultSheet.symbols,
+    wires: defaultSheet.wires,
+    netLabels: defaultSheet.netLabels,
+    textNotes: defaultSheet.textNotes,
     gridSize: DEFAULT_GRID_SIZE,
-  };
+    sheets: [defaultSheet],
+    activeSheetId: defaultSheet.id,
+  });
 };
 
 function App() {
@@ -93,6 +98,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<SchematicCanvasHandle | null>(null);
   const [contextMenuTarget, setContextMenuTarget] = useState<CanvasContextMenuTarget | null>(null);
+  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const autoSaveSkipRef = useRef(true);
   const appSettings = useAppSettings();
 
   const symbolIndex = useMemo(
@@ -132,8 +139,65 @@ function App() {
     setStatusMessage("Zoomed to fit the schematic.");
   }, [editor, symbolIndex]);
 
+  const netHighlight = useMemo(
+    () => computeNetHighlight(editor.state.project, symbolIndex, editor.state.selectedIds),
+    [editor.state.project, editor.state.selectedIds, symbolIndex],
+  );
+
+  useEffect(() => {
+    console.info("[App] Scheduling debounced auto-save", { projectId: editor.state.project.id });
+
+    if (!activeProjectId || editor.state.project.id !== activeProjectId) {
+      return;
+    }
+
+    if (autoSaveSkipRef.current) {
+      autoSaveSkipRef.current = false;
+      return;
+    }
+
+    setAutoSaveState("saving");
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const projectToSave = normalizeProject({
+            ...editor.state.project,
+            activeSheetId: editor.state.activeSheetId,
+            name: editor.state.project.name.trim() || "Untitled Project",
+            updatedAt: Date.now(),
+          });
+          await saveProject(projectToSave);
+          setEditorSeedProject(projectToSave);
+          setAutoSaveState("saved");
+        } catch (error) {
+          console.error("[App] Auto-save failed", error);
+          setAutoSaveState("idle");
+        }
+      })();
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [activeProjectId, editor.state.activeSheetId, editor.state.project]);
+
   useEditorKeyboardShortcuts({
     onSetTool: editor.setTool,
+    onCopy: () => {
+      if (editor.copySelection()) {
+        setStatusMessage("Copied selection to clipboard.");
+      }
+    },
+    onCut: () => {
+      if (editor.cutSelection()) {
+        setStatusMessage("Cut selection to clipboard.");
+      }
+    },
+    onPaste: () => {
+      if (editor.pasteSelection()) {
+        setStatusMessage("Pasted selection with offset.");
+      }
+    },
     onDeleteSelected: () => {
       const hadWireNode = Boolean(editor.state.selectedWireNode);
       editor.deleteSelected();
@@ -309,6 +373,7 @@ function App() {
     console.info("[App] Syncing active stored project into editor seed", { projectId: activeProject?.id });
 
     if (activeProject) {
+      autoSaveSkipRef.current = true;
       setEditorSeedProject(activeProject);
     }
   }, [activeProject]);
@@ -328,11 +393,12 @@ function App() {
   const handleSaveProject = useCallback(async () => {
     console.info("[App] Handling project save");
 
-    const updatedProject: SchematicProject = {
+    const updatedProject = normalizeProject({
       ...editor.state.project,
+      activeSheetId: editor.state.activeSheetId,
       name: editor.state.project.name.trim() || "Untitled Project",
       updatedAt: Date.now(),
-    };
+    });
 
     await saveProject(updatedProject);
     await refreshProjects();
@@ -350,13 +416,13 @@ function App() {
       return;
     }
 
-    const duplicateProject: SchematicProject = {
+    const duplicateProject = normalizeProject({
       ...editor.state.project,
       id: uuidv4(),
       name: `${editor.state.project.name} Copy`,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    };
+    });
 
     await saveProject(duplicateProject);
     await refreshProjects();
