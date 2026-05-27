@@ -11,6 +11,24 @@ const SOUND_ENABLED_KEY = "editor.soundEnabled";
 const WIRE_ROUTE_CLEARANCE_KEY = "editor.wireRouteClearance";
 const SCHEMATIC_TEXT_SIZE_KEY = "editor.schematicTextSize";
 const COLOR_SCHEME_KEY = "editor.colorScheme";
+const STARRED_SYMBOL_IDS_KEY = "library.starredSymbolIds";
+
+const parseStarredSymbolIds = (raw: string | undefined): string[] => {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((value): value is string => typeof value === "string");
+  } catch {
+    return [];
+  }
+};
 
 export type ColorScheme = "dark" | "light";
 
@@ -24,18 +42,21 @@ export const useAppSettings = () => {
   const [wireRouteClearance, setWireRouteClearanceState] = useState(DEFAULT_WIRE_ROUTE_CLEARANCE);
   const [schematicTextSize, setSchematicTextSizeState] = useState(DEFAULT_SCHEMATIC_TEXT_SIZE);
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>("dark");
+  const [starredSymbolIds, setStarredSymbolIdsState] = useState<string[]>([]);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     console.info("[useAppSettings] Loading persisted settings");
 
     void (async () => {
-      const [fingerPanValue, soundValue, clearanceValue, textSizeValue, schemeValue] = await Promise.all([
+      const [fingerPanValue, soundValue, clearanceValue, textSizeValue, schemeValue, starredValue] =
+        await Promise.all([
         getAppSetting(FINGER_PAN_ONLY_KEY),
         getAppSetting(SOUND_ENABLED_KEY),
         getAppSetting(WIRE_ROUTE_CLEARANCE_KEY),
         getAppSetting(SCHEMATIC_TEXT_SIZE_KEY),
         getAppSetting(COLOR_SCHEME_KEY),
+        getAppSetting(STARRED_SYMBOL_IDS_KEY),
       ]);
 
       if (fingerPanValue !== undefined) {
@@ -63,6 +84,8 @@ export const useAppSettings = () => {
       if (schemeValue === "light" || schemeValue === "dark") {
         setColorSchemeState(schemeValue);
       }
+
+      setStarredSymbolIdsState(parseStarredSymbolIds(starredValue));
 
       setIsReady(true);
     })();
@@ -113,18 +136,38 @@ export const useAppSettings = () => {
     void setAppSetting(COLOR_SCHEME_KEY, scheme);
   }, []);
 
+  const toggleStarredSymbol = useCallback((symbolId: string) => {
+    console.info("[useAppSettings] Toggling starred symbol", { symbolId });
+
+    setStarredSymbolIdsState((current) => {
+      const next = current.includes(symbolId)
+        ? current.filter((id) => id !== symbolId)
+        : [...current, symbolId];
+      void setAppSetting(STARRED_SYMBOL_IDS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const isSymbolStarred = useCallback(
+    (symbolId: string) => starredSymbolIds.includes(symbolId),
+    [starredSymbolIds],
+  );
+
   return {
     fingerPansOnly,
     soundEnabled,
     wireRouteClearance,
     schematicTextSize,
     colorScheme,
+    starredSymbolIds,
     isReady,
     setFingerPansOnly,
     setSoundEnabled,
     setWireRouteClearance,
     setSchematicTextSize,
     setColorScheme,
+    toggleStarredSymbol,
+    isSymbolStarred,
   };
 };
 
