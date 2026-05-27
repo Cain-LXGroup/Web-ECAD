@@ -148,6 +148,7 @@ type SymbolInstanceViewProps = {
   symbol: LibrarySymbol;
   instance: SymbolInstance;
   selected: boolean;
+  netHighlighted?: boolean;
   schematicTextSize?: number;
   showPinLabels?: boolean;
   showFieldLabels?: boolean;
@@ -160,6 +161,7 @@ export const SymbolInstanceView = ({
   symbol,
   instance,
   selected,
+  netHighlighted = false,
   schematicTextSize = DEFAULT_SCHEMATIC_TEXT_SIZE,
   showPinLabels = true,
   showFieldLabels = true,
@@ -171,6 +173,7 @@ export const SymbolInstanceView = ({
     instanceId: instance.id,
     symbolName: symbol.name,
     selected,
+    netHighlighted,
   });
 
   const boundsWidth = symbol.bounds.maxX - symbol.bounds.minX;
@@ -218,6 +221,17 @@ export const SymbolInstanceView = ({
           fill="none"
           stroke={kicadSchematicTheme.selection}
           strokeDasharray="18 10"
+          strokeWidth={3}
+          rx={20}
+        />
+      ) : netHighlighted ? (
+        <rect
+          x={symbol.bounds.minX - 18}
+          y={-(symbol.bounds.maxY + 18)}
+          width={boundsWidth + 36}
+          height={boundsHeight + 36}
+          fill="none"
+          stroke="rgba(250, 204, 21, 0.9)"
           strokeWidth={3}
           rx={20}
         />

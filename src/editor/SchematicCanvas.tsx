@@ -513,10 +513,14 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
     const selectionMode = resolveSelectionMode(id, event);
     if (selectionMode === "toggle") {
-      return;
+      const wasSelected = selectedIds.includes(id);
+      onSelectObject(id, "toggle");
+      if (wasSelected) {
+        return;
+      }
+    } else {
+      onSelectObject(id, selectionMode);
     }
-
-    onSelectObject(id, selectionMode);
     event.stopPropagation();
     capturePointerOnSvg(event);
     stopInertia();
@@ -1062,6 +1066,9 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
               instance={instance}
               schematicTextSize={schematicTextSize}
               selected={selectedIds.includes(instance.id)}
+              netHighlighted={
+                netHighlight ? isNetHighlighted(netHighlight, "symbol", instance.id) : false
+              }
               onPointerDown={(event) => beginSelectionDrag(instance.id, event)}
               onLongPress={handleObjectLongPress(instance.id, "symbol")}
               onPinPointerDown={
