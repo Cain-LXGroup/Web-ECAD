@@ -13,6 +13,7 @@ import { ProjectPanel } from "../components/ProjectPanel";
 import { Sidebar } from "../components/Sidebar";
 import { SymbolSearchPanel } from "../components/SymbolSearchPanel";
 import { EditorRightRail } from "../components/EditorRightRail";
+import { WireToolRail } from "../components/WireToolRail";
 import { FloatingChromeButton } from "../components/FloatingChromeButton";
 import { WireToolPalette } from "../components/WireToolPalette";
 import { WorkspaceMenu } from "../components/WorkspaceMenu";
@@ -941,28 +942,31 @@ function App() {
         />
       ) : null}
 
-      <EditorRightRail
-        hidden={isFloatingChromeHidden}
-        activeTool={editor.state.activeTool}
-        onAction={handleBottomToolbarAction}
-        wireTools={
-          editor.state.activeTool === "wire" ? (
-            <WireToolPalette
-              canPlaceWire={Boolean(editor.state.wireDraft && editor.state.wireDraft.points.length >= 2)}
-              canCancelWire={Boolean(editor.state.wireDraft)}
-              onPlaceWire={() => {
-                editor.finishWire();
-                playPlacementClick(appSettings.soundEnabled);
-                setStatusMessage("Placed wire. Switched back to select.");
-              }}
-              onCancelWire={() => {
-                editor.cancelWire();
-                setStatusMessage("Cancelled wire. Switched back to select.");
-              }}
-            />
-          ) : undefined
-        }
-      />
+      {!isFloatingChromeHidden ? (
+        <div className="pointer-events-none fixed right-[max(0.75rem,env(safe-area-inset-right))] bottom-[max(5.5rem,env(safe-area-inset-bottom))] z-50 flex flex-col-reverse items-end gap-3">
+          <EditorRightRail
+            activeTool={editor.state.activeTool}
+            onAction={handleBottomToolbarAction}
+          />
+          {editor.state.activeTool === "wire" ? (
+            <WireToolRail>
+              <WireToolPalette
+                canPlaceWire={Boolean(editor.state.wireDraft && editor.state.wireDraft.points.length >= 2)}
+                canCancelWire={Boolean(editor.state.wireDraft)}
+                onPlaceWire={() => {
+                  editor.finishWire();
+                  playPlacementClick(appSettings.soundEnabled);
+                  setStatusMessage("Placed wire. Switched back to select.");
+                }}
+                onCancelWire={() => {
+                  editor.cancelWire();
+                  setStatusMessage("Cancelled wire. Switched back to select.");
+                }}
+              />
+            </WireToolRail>
+          ) : null}
+        </div>
+      ) : null}
 
       <SheetDrawer
         isOpen={isLibraryDrawerOpen}

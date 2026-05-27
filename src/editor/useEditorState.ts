@@ -92,7 +92,7 @@ export const useEditorState = (
   const [pan, setPanState] = useState<Point>({ x: 0, y: 0 });
   const [placingSymbolId, setPlacingSymbolIdState] = useState<string | undefined>(undefined);
   const [wireDraft, setWireDraft] = useState<WireDraftState | undefined>(undefined);
-  const [wireRoutingMode, setWireRoutingModeState] = useState<WireRoutingMode>("manual");
+  const [wireRoutingMode, setWireRoutingModeState] = useState<WireRoutingMode>("auto");
   const [historyPast, setHistoryPast] = useState<EditorHistorySnapshot[]>([]);
   const [historyFuture, setHistoryFuture] = useState<EditorHistorySnapshot[]>([]);
   const moveHistoryRecordedRef = useRef(false);
@@ -214,7 +214,7 @@ export const useEditorState = (
     setWireDraft(undefined);
     setPlacingSymbolIdState(undefined);
     setActiveTool("pan");
-    setWireRoutingModeState("manual");
+    setWireRoutingModeState("auto");
     clearHistory();
   }, [clearHistory, initialProject.id, normalizeProjectWires]);
 
@@ -250,6 +250,28 @@ export const useEditorState = (
       }));
     },
     [normalizeProjectWires, recordHistory],
+  );
+
+  const resolveAutoRoutedWirePoints = useCallback(
+    (draft: WireDraftState, currentProject: SchematicProject): Point[] => {
+      if (draft.routingMode !== "auto" || draft.points.length < 2) {
+        return normalizeWirePoints(draft.points);
+      }
+
+      const startPoint = draft.points[0];
+      const endPoint = draft.points[draft.points.length - 1];
+
+      return buildAutoRoute(
+        startPoint,
+        endPoint,
+        getAutoRouteContext(
+          currentProject,
+          draft.startConnection,
+          draft.endConnection,
+        ),
+      );
+    },
+    [getAutoRouteContext],
   );
 
   const buildUpdatedWireDraft = useCallback(
@@ -631,6 +653,7 @@ export const useEditorState = (
           const completedDraft = buildUpdatedWireDraft(wireDraft, nextAnchor.point, project);
           if (completedDraft.points.length >= 2) {
             const wireId = `wire-${uuidv4()}`;
+            const routedPoints = resolveAutoRoutedWirePoints(completedDraft, project);
 
             applyProjectUpdate("finishWire", (currentProject) => ({
               ...currentProject,
@@ -638,7 +661,7 @@ export const useEditorState = (
                 ...currentProject.wires,
                 {
                   id: wireId,
-                  points: normalizeWirePoints(completedDraft.points),
+                  points: routedPoints,
                   routingMode: completedDraft.routingMode,
                   startConnection: completedDraft.startConnection,
                   endConnection: completedDraft.endConnection,
@@ -672,6 +695,7 @@ export const useEditorState = (
       }
 
       const wireId = `wire-${uuidv4()}`;
+      const routedPoints = resolveAutoRoutedWirePoints(completedDraft, project);
 
       applyProjectUpdate("finishWire", (currentProject) => ({
         ...currentProject,
@@ -679,7 +703,7 @@ export const useEditorState = (
           ...currentProject.wires,
           {
             id: wireId,
-            points: normalizeWirePoints(completedDraft.points),
+            points: routedPoints,
             routingMode: completedDraft.routingMode,
             startConnection: completedDraft.startConnection,
             endConnection: completedDraft.endConnection,
@@ -735,6 +759,7 @@ export const useEditorState = (
       }
 
       const wireId = `wire-${uuidv4()}`;
+      const routedPoints = resolveAutoRoutedWirePoints(completedDraft, project);
 
       applyProjectUpdate("finishWire", (currentProject) => ({
         ...currentProject,
@@ -742,7 +767,7 @@ export const useEditorState = (
           ...currentProject.wires,
           {
             id: wireId,
-            points: normalizeWirePoints(completedDraft.points),
+            points: routedPoints,
             routingMode: completedDraft.routingMode,
             startConnection: completedDraft.startConnection,
             endConnection: completedDraft.endConnection,

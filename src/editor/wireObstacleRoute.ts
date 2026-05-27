@@ -25,10 +25,10 @@ export type AutoRouteContext = {
   endConnection?: WireConnection;
 };
 
-const DEFAULT_CLEARANCE_MULTIPLIER = 2.5;
-const MIN_CLEARANCE = 72;
-const PIN_EXIT_MULTIPLIER = 2.5;
-const MIN_PIN_EXIT = 80;
+const DEFAULT_CLEARANCE_MULTIPLIER = 4;
+const MIN_CLEARANCE = 120;
+const PIN_EXIT_MULTIPLIER = 3;
+const MIN_PIN_EXIT = 100;
 
 const rotatePoint = (point: Point, rotation: SymbolInstance["rotation"]): Point => {
   switch (rotation) {
@@ -153,29 +153,38 @@ const verticalSegmentHitsRect = (start: Point, end: Point, rect: ObstacleRect): 
   return segmentsOverlap(minY, maxY, rect.minY, rect.maxY);
 };
 
+type SegmentObstacleOptions = {
+  allowedBoundaryCrossingInstanceIds?: string[];
+};
+
 export const segmentIntersectsObstacle = (
   start: Point,
   end: Point,
   obstacles: ObstacleRect[],
-  endpointMargin = 4,
+  options: SegmentObstacleOptions = {},
 ): boolean => {
   if (start.x === end.x && start.y === end.y) {
     return false;
   }
 
   for (const obstacle of obstacles) {
-    const startInside = pointInRect(start, obstacle, endpointMargin);
-    const endInside = pointInRect(end, obstacle, endpointMargin);
+    if (options.allowedBoundaryCrossingInstanceIds?.includes(obstacle.instanceId)) {
+      const startInside = pointInRect(start, obstacle);
+      const endInside = pointInRect(end, obstacle);
+      if (startInside !== endInside) {
+        continue;
+      }
+    }
 
     if (start.x === end.x) {
-      if (verticalSegmentHitsRect(start, end, obstacle) && !(startInside && endInside)) {
+      if (verticalSegmentHitsRect(start, end, obstacle)) {
         return true;
       }
       continue;
     }
 
     if (start.y === end.y) {
-      if (horizontalSegmentHitsRect(start, end, obstacle) && !(startInside && endInside)) {
+      if (horizontalSegmentHitsRect(start, end, obstacle)) {
         return true;
       }
     }
@@ -184,9 +193,13 @@ export const segmentIntersectsObstacle = (
   return false;
 };
 
-export const pathIntersectsObstacles = (points: Point[], obstacles: ObstacleRect[]): boolean => {
+export const pathIntersectsObstacles = (
+  points: Point[],
+  obstacles: ObstacleRect[],
+  options: SegmentObstacleOptions = {},
+): boolean => {
   for (let index = 0; index < points.length - 1; index += 1) {
-    if (segmentIntersectsObstacle(points[index], points[index + 1], obstacles)) {
+    if (segmentIntersectsObstacle(points[index], points[index + 1], obstacles, options)) {
       return true;
     }
   }
@@ -463,18 +476,33 @@ const routeWithAStar = (
   return buildSimpleLRoute(startPoint, endPoint, true);
 };
 
+const getBoundaryCrossingInstanceIds = (context: AutoRouteContext): string[] => {
+  const instanceIds: string[] = [];
+
+  if (context.startConnection) {
+    instanceIds.push(context.startConnection.symbolInstanceId);
+  }
+
+  if (context.endConnection) {
+    instanceIds.push(context.endConnection.symbolInstanceId);
+  }
+
+  return instanceIds;
+};
+
 const chooseBestRoute = (
   startPoint: Point,
   endPoint: Point,
   obstacles: ObstacleRect[],
   gridSize: number,
+  segmentOptions: SegmentObstacleOptions,
 ): Point[] => {
   const candidates = generateCandidateRoutes(startPoint, endPoint, obstacles, gridSize);
   let bestPath: Point[] | undefined;
   let bestScore = Number.POSITIVE_INFINITY;
 
   candidates.forEach((candidate) => {
-    if (pathIntersectsObstacles(candidate, obstacles)) {
+    if (pathIntersectsObstacles(candidate, obstacles, segmentOptions)) {
       return;
     }
 
@@ -506,6 +534,9 @@ export const buildObstacleAwareAutoRoute = (
   });
 
   const obstacles = collectSymbolObstacles(context.project, context.symbolIndex, context.gridSize);
+  const segmentOptions: SegmentObstacleOptions = {
+    allowedBoundaryCrossingInstanceIds: getBoundaryCrossingInstanceIds(context),
+  };
   let routeStart = startPoint;
   let routeEnd = endPoint;
   const prefix: Point[] = [startPoint];
@@ -555,13 +586,19 @@ export const buildObstacleAwareAutoRoute = (
     return normalizeWirePoints([...prefix, ...coreRoute.slice(1), ...tail]);
   };
 
-  const coreRoute = chooseBestRoute(routeStart, routeEnd, obstacles, context.gridSize);
+  const coreRoute = chooseBestRoute(routeStart, routeEnd, obstacles, context.gridSize, segmentOptions);
   const stitched = stitchRoute(coreRoute);
 
-  if (!pathIntersectsObstacles(stitched, obstacles)) {
+  if (!pathIntersectsObstacles(stitched, obstacles, segmentOptions)) {
     return stitched;
   }
 
   const fallback = routeWithAStar(routeStart, routeEnd, obstacles, context.gridSize);
-  return stitchRoute(fallback);
+  const fallbackStitched = stitchRoute(fallback);
+
+  if (!pathIntersectsObstacles(fallbackStitched, obstacles, segmentOptions)) {
+    return fallbackStitched;
+  }
+
+  return fallbackStitched;
 };
