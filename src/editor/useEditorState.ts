@@ -427,7 +427,7 @@ export const useEditorState = (
     fitToContent: (contentSymbolIndex: Record<string, LibrarySymbol>) => {
       console.info("[useEditorState] Fitting viewport to project content");
 
-      const bounds = getProjectBounds(project, contentSymbolIndex);
+      const bounds = getProjectBounds(getProjectView(project, activeSheetId), contentSymbolIndex);
       if (!bounds) {
         setPanState({ x: 0, y: 0 });
         setZoomState(1);
@@ -441,7 +441,11 @@ export const useEditorState = (
     fitToSelection: (contentSymbolIndex: Record<string, LibrarySymbol>) => {
       console.info("[useEditorState] Fitting viewport to current selection");
 
-      const bounds = getSelectionBounds(project, contentSymbolIndex, selectedIds);
+      const bounds = getSelectionBounds(
+        getProjectView(project, activeSheetId),
+        contentSymbolIndex,
+        selectedIds,
+      );
       if (!bounds) {
         return;
       }
@@ -604,10 +608,8 @@ export const useEditorState = (
     renameActiveSheet: (name: string) => {
       console.info("[useEditorState] Renaming active sheet", { name });
 
-      applyProjectUpdate(
-        "renameActiveSheet",
-        (currentProject) => renameSheet(currentProject, activeSheetId, name),
-      );
+      recordHistory();
+      setProject((currentProject) => renameSheet(currentProject, activeSheetId, name));
     },
     setLabelPlacementScope: (scope: NetLabelScope) => {
       console.info("[useEditorState] Setting label placement scope", { scope });

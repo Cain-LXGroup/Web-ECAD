@@ -4,6 +4,9 @@ import type { Tool } from "../editor/useEditorState";
 
 type UseEditorKeyboardShortcutsOptions = {
   onSetTool: (tool: Tool) => void;
+  onCopy?: () => void;
+  onCut?: () => void;
+  onPaste?: () => void;
   onDeleteSelected: () => void;
   onCancelWire: () => void;
   onFinishWire: () => void;
@@ -23,6 +26,9 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 
 export const useEditorKeyboardShortcuts = ({
   onSetTool,
+  onCopy,
+  onCut,
+  onPaste,
   onDeleteSelected,
   onCancelWire,
   onFinishWire,
@@ -70,6 +76,24 @@ export const useEditorKeyboardShortcuts = ({
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && key === "c" && onCopy) {
+        event.preventDefault();
+        onCopy();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && key === "x" && onCut) {
+        event.preventDefault();
+        onCut();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && key === "v" && onPaste) {
+        event.preventDefault();
+        onPaste();
+        return;
+      }
+
       if (event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
@@ -93,7 +117,7 @@ export const useEditorKeyboardShortcuts = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [hasWireDraft, onCancelWire, onDeleteSelected, onFinishWire, onRedo, onSetTool, onUndo]);
+  }, [hasWireDraft, onCancelWire, onCopy, onCut, onDeleteSelected, onFinishWire, onPaste, onRedo, onSetTool, onUndo]);
 };
 
 export default useEditorKeyboardShortcuts;

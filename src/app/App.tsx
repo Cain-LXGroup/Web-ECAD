@@ -144,6 +144,13 @@ function App() {
     [editor.state.project, editor.state.selectedIds, symbolIndex],
   );
 
+  const workspaceStatus =
+    autoSaveState === "saving"
+      ? "Auto-saving…"
+      : autoSaveState === "saved"
+        ? "All changes saved"
+        : statusMessage;
+
   useEffect(() => {
     console.info("[App] Scheduling debounced auto-save", { projectId: editor.state.project.id });
 
@@ -900,7 +907,7 @@ function App() {
             <WorkspaceMenu
               label="Menu"
               projectName={editor.state.project.name}
-              statusMessage={statusMessage}
+              statusMessage={workspaceStatus}
               onSaveProject={() => {
                 void handleSaveProject();
               }}
@@ -943,6 +950,7 @@ function App() {
             project={editor.state.project}
             symbolIndex={symbolIndex}
             selectedIds={editor.state.selectedIds}
+            netHighlight={netHighlight}
             selectedWireNode={editor.state.selectedWireNode}
             activeTool={editor.state.activeTool}
             placingSymbolId={editor.state.placingSymbolId}
