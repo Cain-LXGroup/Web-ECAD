@@ -3,11 +3,24 @@ import { v4 as uuidv4 } from "uuid";
 
 import type {
   LibrarySymbol,
+  NetLabel,
+  NetLabelScope,
   Point,
   SchematicProject,
+  SymbolInstance,
+  TextNote,
+  Wire,
   WireConnection,
   WireRoutingMode,
 } from "../library/types";
+import {
+  addSheetToProject,
+  commitSheetContent,
+  getActiveSheetId,
+  getProjectView,
+  normalizeProject,
+  renameSheet,
+} from "./projectSheets";
 import {
   applyWireConnections,
   buildAutoRoute,
@@ -46,6 +59,8 @@ export type WireDraftState = {
   endWireId?: string;
 };
 
+export type SelectionMode = "replace" | "add" | "toggle";
+
 export type EditorState = {
   project: SchematicProject;
   selectedIds: string[];
@@ -56,6 +71,15 @@ export type EditorState = {
   placingSymbolId?: string;
   wireDraft?: WireDraftState;
   wireRoutingMode: WireRoutingMode;
+  activeSheetId: string;
+  labelPlacementScope: NetLabelScope;
+};
+
+type ClipboardPayload = {
+  symbols: SymbolInstance[];
+  wires: Wire[];
+  netLabels: NetLabel[];
+  textNotes: TextNote[];
 };
 
 const PIN_CONNECTION_TOLERANCE = 36;
@@ -98,8 +122,12 @@ export const useEditorState = (
   symbolIndex: Record<string, LibrarySymbol>,
   { wireRouteClearance = 120 }: UseEditorStateOptions = {},
 ) => {
-  const [project, setProject] = useState<SchematicProject>(initialProject);
+  const normalizedInitial = useMemo(() => normalizeProject(initialProject), [initialProject]);
+  const [project, setProject] = useState<SchematicProject>(normalizedInitial);
+  const [activeSheetId, setActiveSheetId] = useState<string>(() => getActiveSheetId(normalizedInitial));
+  const [labelPlacementScope, setLabelPlacementScope] = useState<NetLabelScope>("sheet");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const clipboardRef = useRef<ClipboardPayload | null>(null);
   const [selectedWireNode, setSelectedWireNode] = useState<WireNodeSelection | undefined>(undefined);
   const [activeTool, setActiveTool] = useState<Tool>("select");
   const [zoom, setZoomState] = useState(1);
@@ -189,18 +217,20 @@ export const useEditorState = (
   const captureSnapshot = useCallback((): EditorHistorySnapshot => {
     return {
       project: structuredClone(project),
+      activeSheetId,
       selectedIds: [...selectedIds],
       selectedWireNode: selectedWireNode ? { ...selectedWireNode } : undefined,
       wireDraft: wireDraft ? structuredClone(wireDraft) : undefined,
       placingSymbolId,
     };
-  }, [placingSymbolId, project, selectedIds, selectedWireNode, wireDraft]);
+  }, [activeSheetId, placingSymbolId, project, selectedIds, selectedWireNode, wireDraft]);
 
   const restoreSnapshot = useCallback(
     (snapshot: EditorHistorySnapshot) => {
       console.info("[useEditorState] Restoring editor snapshot", { projectId: snapshot.project.id });
 
       setProject(normalizeProjectWires(snapshot.project));
+      setActiveSheetId(snapshot.activeSheetId ?? getActiveSheetId(snapshot.project));
       setSelectedIds([...snapshot.selectedIds]);
       setSelectedWireNode(snapshot.selectedWireNode ? { ...snapshot.selectedWireNode } : undefined);
       setWireDraft(snapshot.wireDraft ? structuredClone(snapshot.wireDraft) : undefined);
@@ -228,7 +258,9 @@ export const useEditorState = (
   useEffect(() => {
     console.info("[useEditorState] Syncing external project into editor", { projectId: initialProject.id });
 
-    setProject(normalizeProjectWires(initialProject));
+    const nextProject = normalizeProject(initialProject);
+    setProject(normalizeProjectWires(nextProject));
+    setActiveSheetId(getActiveSheetId(nextProject));
     setSelectedIds([]);
     setSelectedWireNode(undefined);
     setWireDraft(undefined);
@@ -238,9 +270,14 @@ export const useEditorState = (
     clearHistory();
   }, [clearHistory, initialProject.id, normalizeProjectWires]);
 
+  const sheetView = useMemo(
+    () => getProjectView(project, activeSheetId),
+    [activeSheetId, project],
+  );
+
   const state = useMemo<EditorState>(
     () => ({
-      project,
+      project: sheetView,
       selectedIds,
       selectedWireNode,
       activeTool,
@@ -249,8 +286,22 @@ export const useEditorState = (
       placingSymbolId,
       wireDraft,
       wireRoutingMode,
+      activeSheetId,
+      labelPlacementScope,
     }),
-    [activeTool, pan, placingSymbolId, project, selectedIds, selectedWireNode, wireDraft, wireRoutingMode, zoom],
+    [
+      activeSheetId,
+      activeTool,
+      labelPlacementScope,
+      pan,
+      placingSymbolId,
+      selectedIds,
+      selectedWireNode,
+      sheetView,
+      wireDraft,
+      wireRoutingMode,
+      zoom,
+    ],
   );
 
   const applyProjectUpdate = useCallback(
@@ -265,12 +316,19 @@ export const useEditorState = (
         recordHistory();
       }
 
-      setProject((currentProject) => ({
-        ...normalizeProjectWires(updater(currentProject)),
-        updatedAt: Date.now(),
-      }));
+      setProject((currentProject) => {
+        const sheetContent = getProjectView(currentProject, activeSheetId);
+        const updatedSheet = normalizeProjectWires(updater(sheetContent));
+
+        return commitSheetContent(currentProject, activeSheetId, {
+          symbols: updatedSheet.symbols,
+          wires: updatedSheet.wires,
+          netLabels: updatedSheet.netLabels,
+          textNotes: updatedSheet.textNotes,
+        });
+      });
     },
-    [normalizeProjectWires, recordHistory],
+    [activeSheetId, normalizeProjectWires, recordHistory],
   );
 
   const resolveAutoRoutedWirePoints = useCallback(
@@ -393,41 +451,100 @@ export const useEditorState = (
       setZoomState(viewport.zoom);
     },
     duplicateSelected: () => {
-      console.info("[useEditorState] Duplicating selected object", { selectedIds });
+      console.info("[useEditorState] Duplicating selected objects", { selectedIds });
 
-      const selectedId = selectedIds[0];
-      if (!selectedId) {
+      if (selectedIds.length === 0) {
         return;
       }
 
-      const selectedSymbol = project.symbols.find((symbol) => symbol.id === selectedId);
-      if (!selectedSymbol) {
-        return;
-      }
-
-      const symbol = symbolIndex[selectedSymbol.symbolId];
-      const duplicateId = `symbol-${uuidv4()}`;
+      const offset = getProjectView(project, activeSheetId).gridSize || DEFAULT_GRID_SIZE;
+      const newIds: string[] = [];
 
       recordHistory();
       applyProjectUpdate(
         "duplicateSelected",
-        (currentProject) => ({
-          ...currentProject,
-          symbols: [
-            ...currentProject.symbols,
-            {
-              ...selectedSymbol,
-              id: duplicateId,
-              ref: getNextReference(currentProject, symbol?.referencePrefix ?? "U"),
-              x: selectedSymbol.x + (currentProject.gridSize || DEFAULT_GRID_SIZE),
-              y: selectedSymbol.y + (currentProject.gridSize || DEFAULT_GRID_SIZE),
-            },
-          ],
-        }),
+        (currentProject) => {
+          const nextSymbols = [...currentProject.symbols];
+          const nextWires = [...currentProject.wires];
+          const nextLabels = [...currentProject.netLabels];
+          const nextNotes = [...currentProject.textNotes];
+
+          for (const selectedId of selectedIds) {
+            const selectedSymbol = currentProject.symbols.find((symbol) => symbol.id === selectedId);
+            if (selectedSymbol) {
+              const symbol = symbolIndex[selectedSymbol.symbolId];
+              const duplicateId = `symbol-${uuidv4()}`;
+              newIds.push(duplicateId);
+              nextSymbols.push({
+                ...selectedSymbol,
+                id: duplicateId,
+                ref: getNextReference(currentProject, symbol?.referencePrefix ?? "U"),
+                x: selectedSymbol.x + offset,
+                y: selectedSymbol.y + offset,
+              });
+              continue;
+            }
+
+            const selectedWire = currentProject.wires.find((wire) => wire.id === selectedId);
+            if (selectedWire) {
+              const duplicateId = `wire-${uuidv4()}`;
+              newIds.push(duplicateId);
+              nextWires.push({
+                ...selectedWire,
+                id: duplicateId,
+                points: movePoints(selectedWire.points, offset, offset),
+                startConnection: undefined,
+                endConnection: undefined,
+                startWireId: undefined,
+                endWireId: undefined,
+              });
+              continue;
+            }
+
+            const selectedLabel = currentProject.netLabels.find((label) => label.id === selectedId);
+            if (selectedLabel) {
+              const duplicateId = `label-${uuidv4()}`;
+              newIds.push(duplicateId);
+              nextLabels.push({
+                ...selectedLabel,
+                id: duplicateId,
+                x: selectedLabel.x + offset,
+                y: selectedLabel.y + offset,
+                pinConnection: undefined,
+                wireId: undefined,
+              });
+              continue;
+            }
+
+            const selectedNote = currentProject.textNotes.find((note) => note.id === selectedId);
+            if (selectedNote) {
+              const duplicateId = `note-${uuidv4()}`;
+              newIds.push(duplicateId);
+              nextNotes.push({
+                ...selectedNote,
+                id: duplicateId,
+                x: selectedNote.x + offset,
+                y: selectedNote.y + offset,
+                pinConnection: undefined,
+                wireId: undefined,
+              });
+            }
+          }
+
+          return {
+            ...currentProject,
+            symbols: nextSymbols,
+            wires: nextWires,
+            netLabels: nextLabels,
+            textNotes: nextNotes,
+          };
+        },
         { record: false },
       );
 
-      setSelectedIds([duplicateId]);
+      if (newIds.length > 0) {
+        setSelectedIds(newIds);
+      }
     },
     setTool: (tool: Tool) => {
       console.info("[useEditorState] Setting active tool", { tool });
@@ -444,13 +561,57 @@ export const useEditorState = (
     loadProject: (nextProject: SchematicProject) => {
       console.info("[useEditorState] Loading project explicitly", { projectId: nextProject.id });
 
-      setProject(normalizeProjectWires(nextProject));
+      const normalized = normalizeProject(nextProject);
+      setProject(normalizeProjectWires(normalized));
+      setActiveSheetId(getActiveSheetId(normalized));
       setSelectedIds([]);
       setSelectedWireNode(undefined);
       setWireDraft(undefined);
       setPlacingSymbolIdState(undefined);
       setActiveTool("select");
       clearHistory();
+    },
+    setActiveSheet: (sheetId: string) => {
+      console.info("[useEditorState] Switching active sheet", { sheetId });
+
+      setProject((currentProject) => {
+        const view = getProjectView(currentProject, sheetId);
+        return {
+          ...currentProject,
+          activeSheetId: sheetId,
+          symbols: view.symbols,
+          wires: view.wires,
+          netLabels: view.netLabels,
+          textNotes: view.textNotes,
+        };
+      });
+      setActiveSheetId(sheetId);
+      setSelectedIds([]);
+      setSelectedWireNode(undefined);
+      setWireDraft(undefined);
+    },
+    addSheet: () => {
+      console.info("[useEditorState] Adding schematic sheet");
+
+      recordHistory();
+      const nextProject = addSheetToProject(project);
+      setProject(nextProject);
+      setActiveSheetId(getActiveSheetId(nextProject));
+      setSelectedIds([]);
+      setSelectedWireNode(undefined);
+      setWireDraft(undefined);
+    },
+    renameActiveSheet: (name: string) => {
+      console.info("[useEditorState] Renaming active sheet", { name });
+
+      applyProjectUpdate(
+        "renameActiveSheet",
+        (currentProject) => renameSheet(currentProject, activeSheetId, name),
+      );
+    },
+    setLabelPlacementScope: (scope: NetLabelScope) => {
+      console.info("[useEditorState] Setting label placement scope", { scope });
+      setLabelPlacementScope(scope);
     },
     setPlacingSymbolId: (symbolId?: string) => {
       console.info("[useEditorState] Setting placing symbol id", { symbolId });
@@ -526,10 +687,24 @@ export const useEditorState = (
       setSelectedIds([symbolInstanceId]);
       setPlacingSymbolIdState(undefined);
     },
-    selectObject: (id: string) => {
-      console.info("[useEditorState] Selecting object", { id });
-      setSelectedIds([id]);
+    selectObject: (id: string, mode: SelectionMode = "replace") => {
+      console.info("[useEditorState] Selecting object", { id, mode });
+
       setSelectedWireNode(undefined);
+
+      if (mode === "replace") {
+        setSelectedIds([id]);
+        return;
+      }
+
+      if (mode === "add") {
+        setSelectedIds((current) => (current.includes(id) ? current : [...current, id]));
+        return;
+      }
+
+      setSelectedIds((current) =>
+        current.includes(id) ? current.filter((candidate) => candidate !== id) : [...current, id],
+      );
     },
     clearSelection: () => {
       console.info("[useEditorState] Clearing selection");
@@ -932,11 +1107,12 @@ export const useEditorState = (
       return routeOrthogonalSegment(wireDraft.points, nextAnchor.point);
     },
     addNetLabel: (text: string, point: Point) => {
-      console.info("[useEditorState] Adding net label", { text, point });
+      console.info("[useEditorState] Adding net label", { text, point, labelPlacementScope });
 
       const labelId = `label-${uuidv4()}`;
-      const gridSize = project.gridSize || DEFAULT_GRID_SIZE;
-      const anchor = resolveLabelAnchor(point, project, symbolIndex, gridSize);
+      const sheetContent = getProjectView(project, activeSheetId);
+      const gridSize = sheetContent.gridSize || DEFAULT_GRID_SIZE;
+      const anchor = resolveLabelAnchor(point, sheetContent, symbolIndex, gridSize);
       const snapped = snapPoint(anchor.point, gridSize);
 
       applyProjectUpdate("addNetLabel", (currentProject) => ({
@@ -947,6 +1123,7 @@ export const useEditorState = (
             id: labelId,
             text,
             rotation: 0,
+            labelScope: labelPlacementScope,
             x: snapped.x,
             y: snapped.y,
             pinConnection: anchor.pinConnection,
@@ -957,6 +1134,140 @@ export const useEditorState = (
 
       setSelectedIds([labelId]);
     },
+    copySelection: () => {
+      console.info("[useEditorState] Copying selection to clipboard", { selectedIds });
+
+      if (selectedIds.length === 0) {
+        return false;
+      }
+
+      const sheetContent = getProjectView(project, activeSheetId);
+      clipboardRef.current = {
+        symbols: sheetContent.symbols.filter((symbol) => selectedIds.includes(symbol.id)),
+        wires: sheetContent.wires.filter((wire) => selectedIds.includes(wire.id)),
+        netLabels: sheetContent.netLabels.filter((label) => selectedIds.includes(label.id)),
+        textNotes: sheetContent.textNotes.filter((note) => selectedIds.includes(note.id)),
+      };
+
+      return clipboardRef.current.symbols.length > 0 ||
+        clipboardRef.current.wires.length > 0 ||
+        clipboardRef.current.netLabels.length > 0 ||
+        clipboardRef.current.textNotes.length > 0;
+    },
+    cutSelection: () => {
+      console.info("[useEditorState] Cutting selection", { selectedIds });
+
+      if (selectedIds.length === 0) {
+        return false;
+      }
+
+      const sheetContent = getProjectView(project, activeSheetId);
+      clipboardRef.current = {
+        symbols: sheetContent.symbols.filter((symbol) => selectedIds.includes(symbol.id)),
+        wires: sheetContent.wires.filter((wire) => selectedIds.includes(wire.id)),
+        netLabels: sheetContent.netLabels.filter((label) => selectedIds.includes(label.id)),
+        textNotes: sheetContent.textNotes.filter((note) => selectedIds.includes(note.id)),
+      };
+
+      applyProjectUpdate("cutSelection", (currentProject) => ({
+        ...currentProject,
+        symbols: currentProject.symbols.filter((symbol) => !selectedIds.includes(symbol.id)),
+        wires: currentProject.wires.filter((wire) => !selectedIds.includes(wire.id)),
+        netLabels: currentProject.netLabels.filter((label) => !selectedIds.includes(label.id)),
+        textNotes: currentProject.textNotes.filter((note) => !selectedIds.includes(note.id)),
+      }));
+
+      setSelectedIds([]);
+      setSelectedWireNode(undefined);
+      return true;
+    },
+    pasteSelection: () => {
+      console.info("[useEditorState] Pasting clipboard selection");
+
+      const payload = clipboardRef.current;
+      if (!payload) {
+        return false;
+      }
+
+      const sheetContent = getProjectView(project, activeSheetId);
+      const offset = sheetContent.gridSize || DEFAULT_GRID_SIZE;
+      const newIds: string[] = [];
+
+      applyProjectUpdate("pasteSelection", (currentProject) => {
+        const nextSymbols = [...currentProject.symbols];
+        const nextWires = [...currentProject.wires];
+        const nextLabels = [...currentProject.netLabels];
+        const nextNotes = [...currentProject.textNotes];
+
+        for (const symbol of payload.symbols) {
+          const librarySymbol = symbolIndex[symbol.symbolId];
+          const duplicateId = `symbol-${uuidv4()}`;
+          newIds.push(duplicateId);
+          nextSymbols.push({
+            ...symbol,
+            id: duplicateId,
+            ref: getNextReference(currentProject, librarySymbol?.referencePrefix ?? "U"),
+            x: symbol.x + offset,
+            y: symbol.y + offset,
+          });
+        }
+
+        for (const wire of payload.wires) {
+          const duplicateId = `wire-${uuidv4()}`;
+          newIds.push(duplicateId);
+          nextWires.push({
+            ...wire,
+            id: duplicateId,
+            points: movePoints(wire.points, offset, offset),
+            startConnection: undefined,
+            endConnection: undefined,
+            startWireId: undefined,
+            endWireId: undefined,
+          });
+        }
+
+        for (const label of payload.netLabels) {
+          const duplicateId = `label-${uuidv4()}`;
+          newIds.push(duplicateId);
+          nextLabels.push({
+            ...label,
+            id: duplicateId,
+            x: label.x + offset,
+            y: label.y + offset,
+            pinConnection: undefined,
+            wireId: undefined,
+          });
+        }
+
+        for (const note of payload.textNotes) {
+          const duplicateId = `note-${uuidv4()}`;
+          newIds.push(duplicateId);
+          nextNotes.push({
+            ...note,
+            id: duplicateId,
+            x: note.x + offset,
+            y: note.y + offset,
+            pinConnection: undefined,
+            wireId: undefined,
+          });
+        }
+
+        return {
+          ...currentProject,
+          symbols: nextSymbols,
+          wires: nextWires,
+          netLabels: nextLabels,
+          textNotes: nextNotes,
+        };
+      });
+
+      if (newIds.length > 0) {
+        setSelectedIds(newIds);
+      }
+
+      return newIds.length > 0;
+    },
+    hasClipboard: () => Boolean(clipboardRef.current),
     addTextNote: (text: string, point: Point) => {
       console.info("[useEditorState] Adding text note", { text, point });
 
