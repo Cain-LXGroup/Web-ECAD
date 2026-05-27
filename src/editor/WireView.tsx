@@ -7,6 +7,7 @@ import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 type WireViewProps = {
   wire: Wire;
   selected?: boolean;
+  netHighlighted?: boolean;
   dashed?: boolean;
   onPointerDown?: (event: ReactPointerEvent<SVGElement>) => void;
   onLongPress?: (event: ReactPointerEvent<SVGElement>) => void;
@@ -15,11 +16,17 @@ type WireViewProps = {
 export const WireView = ({
   wire,
   selected = false,
+  netHighlighted = false,
   dashed = false,
   onPointerDown,
   onLongPress,
 }: WireViewProps) => {
-  console.info("[WireView] Rendering wire", { wireId: wire.id, pointCount: wire.points.length, selected });
+  console.info("[WireView] Rendering wire", {
+    wireId: wire.id,
+    pointCount: wire.points.length,
+    selected,
+    netHighlighted,
+  });
 
   const points = wire.points.map((point) => `${point.x},${point.y}`).join(" ");
 
@@ -51,8 +58,14 @@ export const WireView = ({
       <polyline
         points={points}
         fill="none"
-        stroke={selected ? kicadSchematicTheme.wireSelected : kicadSchematicTheme.wire}
-        strokeWidth={selected ? 6 : 4}
+        stroke={
+          selected
+            ? kicadSchematicTheme.wireSelected
+            : netHighlighted
+              ? "rgba(250, 204, 21, 0.95)"
+              : kicadSchematicTheme.wire
+        }
+        strokeWidth={selected ? 6 : netHighlighted ? 5 : 4}
         strokeDasharray={dashed ? "14 10" : undefined}
         strokeLinecap="round"
         strokeLinejoin="round"
