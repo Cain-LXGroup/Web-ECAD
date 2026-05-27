@@ -3,6 +3,77 @@ import { resolveLabelAnchor } from "./labelAnchoring";
 import { normalizeWirePoints } from "./wireRouting";
 import { DEFAULT_GRID_SIZE, snapPoint } from "./snapping";
 
+const pointsEqual = (left: Point, right: Point): boolean => left.x === right.x && left.y === right.y;
+
+export const applyWireNodeMoveWithJunctions = (
+  wires: Wire[],
+  wireId: string,
+  pointIndex: number,
+  nextPoint: Point,
+  gridSize: number,
+): Wire[] => {
+  console.info("[wireEditing] Applying wire node move with junction propagation", {
+    wireId,
+    pointIndex,
+    wireCount: wires.length,
+  });
+
+  const movedWire = wires.find((candidate) => candidate.id === wireId);
+  if (!movedWire || pointIndex < 0 || pointIndex >= movedWire.points.length) {
+    return wires;
+  }
+
+  const previousPoint = movedWire.points[pointIndex];
+  const snappedNext = snapPoint(nextPoint, gridSize);
+
+  if (pointsEqual(previousPoint, snappedNext)) {
+    return wires;
+  }
+
+  const withMovedNode = wires.map((wire) =>
+    wire.id === wireId ? updateWirePointPosition(wire, pointIndex, snappedNext, gridSize) : wire,
+  );
+
+  return withMovedNode.map((wire) => {
+    if (wire.id === wireId) {
+      return wire;
+    }
+
+    let points = [...wire.points];
+    let changed = false;
+
+    for (let index = 0; index < points.length; index += 1) {
+      if (pointsEqual(points[index], previousPoint)) {
+        points[index] = snappedNext;
+        changed = true;
+      }
+    }
+
+    if (wire.startWireId === wireId && points.length > 0 && pointsEqual(points[0], previousPoint)) {
+      points[0] = snappedNext;
+      changed = true;
+    }
+
+    if (wire.endWireId === wireId && points.length > 0) {
+      const lastIndex = points.length - 1;
+      if (pointsEqual(points[lastIndex], previousPoint)) {
+        points[lastIndex] = snappedNext;
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return wire;
+    }
+
+    return {
+      ...wire,
+      routingMode: "manual" as const,
+      points: normalizeWirePoints(points),
+    };
+  });
+};
+
 export const updateWirePointPosition = (
   wire: Wire,
   pointIndex: number,

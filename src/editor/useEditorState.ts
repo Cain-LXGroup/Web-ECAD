@@ -41,14 +41,15 @@ import { getProjectBounds, getSelectionBounds } from "./projectBounds";
 import { DEFAULT_GRID_SIZE, snapPoint } from "./snapping";
 import { normalizeRotation, toggleMirror } from "./transforms";
 import { getViewportForBounds } from "./viewportFitting";
+import { offsetNetLabelFromAnchor, resolveNetLabelPlacement, resolvePinnedNetLabelPoint } from "./labelPlacement";
 import {
+  applyWireNodeMoveWithJunctions,
   finalizeWireEndpointAnchors,
   removeWirePointAtIndex,
-  updateWirePointPosition,
 } from "./wireEditing";
 import type { WireNodeSelection } from "./WireNodeHandles";
 
-export type Tool = "select" | "wire" | "label" | "text";
+export type Tool = "select" | "wire" | "label-global" | "label-sheet" | "text";
 
 export type WireDraftState = {
   points: Point[];
@@ -553,6 +554,11 @@ export const useEditorState = (
     setTool: (tool: Tool) => {
       console.info("[useEditorState] Setting active tool", { tool });
       setActiveTool(tool);
+      if (tool === "label-global") {
+        setLabelPlacementScope("global");
+      } else if (tool === "label-sheet") {
+        setLabelPlacementScope("sheet");
+      }
     },
     setProjectName: (name: string) => {
       console.info("[useEditorState] Setting project name", { name });
@@ -738,8 +744,12 @@ export const useEditorState = (
         "moveWireNode",
         (currentProject) => ({
           ...currentProject,
-          wires: currentProject.wires.map((wire) =>
-            wire.id === wireId ? updateWirePointPosition(wire, pointIndex, point, gridSize) : wire,
+          wires: applyWireNodeMoveWithJunctions(
+            currentProject.wires,
+            wireId,
+            pointIndex,
+            point,
+            gridSize,
           ),
         }),
         { record: false },
@@ -854,7 +864,7 @@ export const useEditorState = (
       );
     },
     rotateSelected: () => {
-      console.info("[useEditorState] Rotating selected symbols", { selectedIds });
+      console.info("[useEditorState] Rotating selected objects", { selectedIds });
 
       applyProjectUpdate("rotateSelected", (currentProject) => ({
         ...currentProject,
@@ -863,16 +873,109 @@ export const useEditorState = (
             ? { ...symbol, rotation: normalizeRotation(symbol.rotation + 90) }
             : symbol,
         ),
+        netLabels: currentProject.netLabels.map((label) =>
+          selectedIds.includes(label.id)
+            ? { ...label, rotation: normalizeRotation(label.rotation + 90) }
+            : label,
+        ),
       }));
     },
     mirrorSelected: () => {
-      console.info("[useEditorState] Mirroring selected symbols", { selectedIds });
+      console.info("[useEditorState] Mirroring selected objects", { selectedIds });
 
       applyProjectUpdate("mirrorSelected", (currentProject) => ({
         ...currentProject,
         symbols: currentProject.symbols.map((symbol) =>
           selectedIds.includes(symbol.id) ? { ...symbol, mirrored: toggleMirror(symbol.mirrored) } : symbol,
         ),
+        netLabels: currentProject.netLabels.map((label) =>
+          selectedIds.includes(label.id) ? { ...label, mirrored: !label.mirrored } : label,
+        ),
+      }));
+    },
+    nudgeSymbolAnnotation: (
+      instanceId: string,
+      field: "ref" | "value",
+      direction: "up" | "right" | "down" | "left",
+    ) => {
+      console.info("[useEditorState] Nudging symbol field annotation", { instanceId, field, direction });
+
+      const deltaByDirection: Record<typeof direction, Point> = {
+        up: { x: 0, y: 40 },
+        right: { x: 40, y: 0 },
+        down: { x: 0, y: -40 },
+        left: { x: -40, y: 0 },
+      };
+      const delta = deltaByDirection[direction];
+      const annotationKey = field === "ref" ? "refAnnotation" : "valueAnnotation";
+
+      applyProjectUpdate("nudgeSymbolAnnotation", (currentProject) => ({
+        ...currentProject,
+        symbols: currentProject.symbols.map((symbol) => {
+          if (symbol.id !== instanceId) {
+            return symbol;
+          }
+
+          const current = symbol[annotationKey] ?? {};
+          const currentOffset = current.offset ?? { x: 0, y: 0 };
+
+          return {
+            ...symbol,
+            [annotationKey]: {
+              ...current,
+              offset: {
+                x: currentOffset.x + delta.x,
+                y: currentOffset.y + delta.y,
+              },
+            },
+          };
+        }),
+      }));
+    },
+    rotateSymbolAnnotation: (instanceId: string, field: "ref" | "value") => {
+      console.info("[useEditorState] Rotating symbol field annotation", { instanceId, field });
+
+      const annotationKey = field === "ref" ? "refAnnotation" : "valueAnnotation";
+
+      applyProjectUpdate("rotateSymbolAnnotation", (currentProject) => ({
+        ...currentProject,
+        symbols: currentProject.symbols.map((symbol) => {
+          if (symbol.id !== instanceId) {
+            return symbol;
+          }
+
+          const current = symbol[annotationKey] ?? {};
+          return {
+            ...symbol,
+            [annotationKey]: {
+              ...current,
+              rotation: normalizeRotation((current.rotation ?? 0) + 90),
+            },
+          };
+        }),
+      }));
+    },
+    toggleSymbolAnnotationHidden: (instanceId: string, field: "ref" | "value") => {
+      console.info("[useEditorState] Toggling symbol field annotation visibility", { instanceId, field });
+
+      const annotationKey = field === "ref" ? "refAnnotation" : "valueAnnotation";
+
+      applyProjectUpdate("toggleSymbolAnnotationHidden", (currentProject) => ({
+        ...currentProject,
+        symbols: currentProject.symbols.map((symbol) => {
+          if (symbol.id !== instanceId) {
+            return symbol;
+          }
+
+          const current = symbol[annotationKey] ?? {};
+          return {
+            ...symbol,
+            [annotationKey]: {
+              ...current,
+              hidden: !current.hidden,
+            },
+          };
+        }),
       }));
     },
     deleteSelected: () => {
@@ -1115,7 +1218,19 @@ export const useEditorState = (
       const sheetContent = getProjectView(project, activeSheetId);
       const gridSize = sheetContent.gridSize || DEFAULT_GRID_SIZE;
       const anchor = resolveLabelAnchor(point, sheetContent, symbolIndex, gridSize);
-      const snapped = snapPoint(anchor.point, gridSize);
+      const placement = resolveNetLabelPlacement(sheetContent, symbolIndex, anchor.pinConnection);
+      const labelOffset = Math.max(gridSize * 0.9, 36);
+      const positioned = anchor.pinConnection
+        ? resolvePinnedNetLabelPoint(
+            sheetContent,
+            symbolIndex,
+            anchor.pinConnection,
+            placement.rotation,
+            placement.mirrored,
+            gridSize,
+          ) ?? anchor.point
+        : offsetNetLabelFromAnchor(anchor.point, placement.rotation, placement.mirrored, labelOffset);
+      const snapped = snapPoint(positioned, gridSize);
 
       applyProjectUpdate("addNetLabel", (currentProject) => ({
         ...currentProject,
@@ -1124,7 +1239,8 @@ export const useEditorState = (
           {
             id: labelId,
             text,
-            rotation: 0,
+            rotation: placement.rotation,
+            mirrored: placement.mirrored,
             labelScope: labelPlacementScope,
             x: snapped.x,
             y: snapped.y,

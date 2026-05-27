@@ -1,16 +1,27 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   DEFAULT_SCHEMATIC_TEXT_SIZE,
   clampSchematicTextSize,
 } from "../editor/schematicTextSizing";
 import { getAppSetting, setAppSetting } from "../storage/settingsStore";
+import {
+  applySchematicColors,
+  defaultSchematicColorsByScheme,
+  defaultSchematicColorsForScheme,
+  parseStoredSchematicColorsByScheme,
+  serializeSchematicColorsByScheme,
+  type SchematicColorRole,
+  type SchematicColorsByScheme,
+} from "../theme/schematicTheme";
 
 const FINGER_PAN_ONLY_KEY = "editor.fingerPansOnly";
 const SOUND_ENABLED_KEY = "editor.soundEnabled";
 const WIRE_ROUTE_CLEARANCE_KEY = "editor.wireRouteClearance";
 const SCHEMATIC_TEXT_SIZE_KEY = "editor.schematicTextSize";
 const COLOR_SCHEME_KEY = "editor.colorScheme";
+const SCHEMATIC_COLORS_KEY = "editor.schematicColors";
+const NET_HIGHLIGHT_ENABLED_KEY = "editor.netHighlightEnabled";
 const STARRED_SYMBOL_IDS_KEY = "library.starredSymbolIds";
 
 const parseStarredSymbolIds = (raw: string | undefined): string[] => {
@@ -42,20 +53,43 @@ export const useAppSettings = () => {
   const [wireRouteClearance, setWireRouteClearanceState] = useState(DEFAULT_WIRE_ROUTE_CLEARANCE);
   const [schematicTextSize, setSchematicTextSizeState] = useState(DEFAULT_SCHEMATIC_TEXT_SIZE);
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>("dark");
+  const [schematicColorsByScheme, setSchematicColorsBySchemeState] = useState<SchematicColorsByScheme>(
+    defaultSchematicColorsByScheme(),
+  );
+  const [netHighlightEnabled, setNetHighlightEnabledState] = useState(true);
   const [starredSymbolIds, setStarredSymbolIdsState] = useState<string[]>([]);
   const [isReady, setIsReady] = useState(false);
+
+  const schematicColors = useMemo(
+    () => schematicColorsByScheme[colorScheme],
+    [schematicColorsByScheme, colorScheme],
+  );
+
+  const persistSchematicColorsByScheme = useCallback((next: SchematicColorsByScheme) => {
+    void setAppSetting(SCHEMATIC_COLORS_KEY, serializeSchematicColorsByScheme(next));
+  }, []);
 
   useEffect(() => {
     console.info("[useAppSettings] Loading persisted settings");
 
     void (async () => {
-      const [fingerPanValue, soundValue, clearanceValue, textSizeValue, schemeValue, starredValue] =
-        await Promise.all([
+      const [
+        fingerPanValue,
+        soundValue,
+        clearanceValue,
+        textSizeValue,
+        schemeValue,
+        schematicColorsValue,
+        netHighlightValue,
+        starredValue,
+      ] = await Promise.all([
         getAppSetting(FINGER_PAN_ONLY_KEY),
         getAppSetting(SOUND_ENABLED_KEY),
         getAppSetting(WIRE_ROUTE_CLEARANCE_KEY),
         getAppSetting(SCHEMATIC_TEXT_SIZE_KEY),
         getAppSetting(COLOR_SCHEME_KEY),
+        getAppSetting(SCHEMATIC_COLORS_KEY),
+        getAppSetting(NET_HIGHLIGHT_ENABLED_KEY),
         getAppSetting(STARRED_SYMBOL_IDS_KEY),
       ]);
 
@@ -85,6 +119,12 @@ export const useAppSettings = () => {
         setColorSchemeState(schemeValue);
       }
 
+      setSchematicColorsBySchemeState(parseStoredSchematicColorsByScheme(schematicColorsValue));
+
+      if (netHighlightValue !== undefined) {
+        setNetHighlightEnabledState(netHighlightValue === "true");
+      }
+
       setStarredSymbolIdsState(parseStarredSymbolIds(starredValue));
 
       setIsReady(true);
@@ -98,6 +138,14 @@ export const useAppSettings = () => {
 
     document.documentElement.dataset.theme = colorScheme;
   }, [colorScheme, isReady]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+
+    applySchematicColors(schematicColors);
+  }, [schematicColors, isReady]);
 
   const setFingerPansOnly = useCallback((enabled: boolean) => {
     console.info("[useAppSettings] Updating finger-pan-only setting", { enabled });
@@ -136,6 +184,45 @@ export const useAppSettings = () => {
     void setAppSetting(COLOR_SCHEME_KEY, scheme);
   }, []);
 
+  const setSchematicColor = useCallback(
+    (role: SchematicColorRole, value: string) => {
+      console.info("[useAppSettings] Updating schematic color", { role, colorScheme });
+
+      setSchematicColorsBySchemeState((current) => {
+        const next: SchematicColorsByScheme = {
+          ...current,
+          [colorScheme]: {
+            ...current[colorScheme],
+            [role]: value,
+          },
+        };
+        persistSchematicColorsByScheme(next);
+        return next;
+      });
+    },
+    [colorScheme, persistSchematicColorsByScheme],
+  );
+
+  const setNetHighlightEnabled = useCallback((enabled: boolean) => {
+    console.info("[useAppSettings] Updating net highlight enabled", { enabled });
+
+    setNetHighlightEnabledState(enabled);
+    void setAppSetting(NET_HIGHLIGHT_ENABLED_KEY, String(enabled));
+  }, []);
+
+  const resetSchematicColors = useCallback(() => {
+    console.info("[useAppSettings] Resetting schematic colors for active scheme", { colorScheme });
+
+    setSchematicColorsBySchemeState((current) => {
+      const next: SchematicColorsByScheme = {
+        ...current,
+        [colorScheme]: defaultSchematicColorsForScheme(colorScheme),
+      };
+      persistSchematicColorsByScheme(next);
+      return next;
+    });
+  }, [colorScheme, persistSchematicColorsByScheme]);
+
   const toggleStarredSymbol = useCallback((symbolId: string) => {
     console.info("[useAppSettings] Toggling starred symbol", { symbolId });
 
@@ -159,13 +246,18 @@ export const useAppSettings = () => {
     wireRouteClearance,
     schematicTextSize,
     colorScheme,
+    schematicColors,
     starredSymbolIds,
+    netHighlightEnabled,
     isReady,
     setFingerPansOnly,
     setSoundEnabled,
     setWireRouteClearance,
     setSchematicTextSize,
     setColorScheme,
+    setSchematicColor,
+    resetSchematicColors,
+    setNetHighlightEnabled,
     toggleStarredSymbol,
     isSymbolStarred,
   };

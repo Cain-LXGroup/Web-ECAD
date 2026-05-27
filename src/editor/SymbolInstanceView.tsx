@@ -2,9 +2,17 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 import { useLongPress } from "../hooks/useLongPress";
 import { getPinBodyPoint, getPinDirection } from "../library/symbolGeometry";
-import type { LibrarySymbol, SymbolGraphic, SymbolInstance, WireConnection } from "../library/types";
+import type {
+  LibrarySymbol,
+  SymbolFieldAnnotation,
+  SymbolGraphic,
+  SymbolInstance,
+  WireConnection,
+} from "../library/types";
+import { formatSymbolFieldCaption } from "./symbolDisplay";
 import { DEFAULT_SCHEMATIC_TEXT_SIZE, scaleThemeFontSize } from "./schematicTextSizing";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { schematicColorVar } from "../theme/schematicTheme";
 
 const ARC_TOLERANCE = 0.01;
 
@@ -34,7 +42,7 @@ const getBodyFill = (graphic: SymbolGraphic): string => {
     (graphic.type === "rect" || graphic.type === "circle" || graphic.type === "polyline") &&
     graphic.fill === "white"
   ) {
-    return kicadSchematicTheme.bodyFill;
+    return schematicColorVar("bodyFill");
   }
 
   return "none";
@@ -43,7 +51,7 @@ const getBodyFill = (graphic: SymbolGraphic): string => {
 const renderGraphic = (graphic: SymbolGraphic, key: string): ReactNode => {
   console.info("[SymbolInstanceView] Rendering symbol graphic", { graphicType: graphic.type });
 
-  const stroke = kicadSchematicTheme.bodyStroke;
+  const stroke = schematicColorVar("bodyStroke");
   const fill = getBodyFill(graphic);
 
   switch (graphic.type) {
@@ -128,7 +136,7 @@ const renderGraphic = (graphic: SymbolGraphic, key: string): ReactNode => {
             x={graphic.x}
             y={-graphic.y}
             fontSize={graphic.size ?? 32}
-            fill={kicadSchematicTheme.pinName}
+            fill={schematicColorVar("pinName")}
             fontFamily={kicadSchematicTheme.fontFamily}
             textAnchor="middle"
             dominantBaseline="central"
@@ -178,10 +186,44 @@ export const SymbolInstanceView = ({
 
   const boundsWidth = symbol.bounds.maxX - symbol.bounds.minX;
   const boundsHeight = symbol.bounds.maxY - symbol.bounds.minY;
-  const displayValue = instance.value || symbol.properties?.Value || symbol.name;
-  const displayRef = instance.ref || `${symbol.referencePrefix ?? "U"}?`;
+  const fieldCaption = formatSymbolFieldCaption(instance, symbol);
   const refFontSize = scaleThemeFontSize(kicadSchematicTheme.refFontSize, schematicTextSize);
   const valueFontSize = scaleThemeFontSize(kicadSchematicTheme.valueFontSize, schematicTextSize);
+  const compactFontSize = scaleThemeFontSize(kicadSchematicTheme.valueFontSize, schematicTextSize);
+
+  const renderFieldAnnotation = (
+    key: string,
+    text: string,
+    defaultX: number,
+    defaultY: number,
+    fontSize: number,
+    fill: string,
+    annotation?: SymbolFieldAnnotation,
+  ) => {
+    if (annotation?.hidden) {
+      return null;
+    }
+
+    const offset = annotation?.offset ?? { x: 0, y: 0 };
+    const x = defaultX + offset.x;
+    const y = defaultY + offset.y;
+    const rotation = annotation?.rotation ?? 0;
+
+    return (
+      <text
+        key={key}
+        x={x}
+        y={y}
+        fontSize={fontSize}
+        fill={fill}
+        fontFamily={kicadSchematicTheme.fontFamily}
+        fontWeight={700}
+        transform={rotation ? `rotate(${rotation} ${x} ${y})` : undefined}
+      >
+        {text}
+      </text>
+    );
+  };
   const pinNameFontSize = scaleThemeFontSize(kicadSchematicTheme.pinNameFontSize, schematicTextSize);
   const pinNumberFontSize = scaleThemeFontSize(kicadSchematicTheme.pinNumberFontSize, schematicTextSize);
 
@@ -219,7 +261,7 @@ export const SymbolInstanceView = ({
           width={boundsWidth + 36}
           height={boundsHeight + 36}
           fill="none"
-          stroke={kicadSchematicTheme.selection}
+          stroke={schematicColorVar("selection")}
           strokeDasharray="18 10"
           strokeWidth={3}
           rx={20}
@@ -231,7 +273,7 @@ export const SymbolInstanceView = ({
           width={boundsWidth + 36}
           height={boundsHeight + 36}
           fill="none"
-          stroke="rgba(250, 204, 21, 0.9)"
+          stroke={schematicColorVar("netHighlight")}
           strokeWidth={3}
           rx={20}
         />
@@ -254,11 +296,11 @@ export const SymbolInstanceView = ({
                   y1={pin.y}
                   x2={bodyPoint.x}
                   y2={bodyPoint.y}
-                  stroke={kicadSchematicTheme.pinStroke}
+                  stroke={schematicColorVar("pinStroke")}
                   strokeWidth={2}
                   strokeLinecap="round"
                 />
-                <circle cx={pin.x} cy={pin.y} r={6} fill={kicadSchematicTheme.pinConnection} pointerEvents="none" />
+                <circle cx={pin.x} cy={pin.y} r={6} fill={schematicColorVar("pinConnection")} pointerEvents="none" />
                 {onPinPointerDown ? (
                   <circle
                     cx={pin.x}
@@ -301,7 +343,7 @@ export const SymbolInstanceView = ({
                     x={nameX}
                     y={nameY}
                     fontSize={pinNameFontSize}
-                    fill={kicadSchematicTheme.pinName}
+                    fill={schematicColorVar("pinName")}
                     fontFamily={kicadSchematicTheme.fontFamily}
                     dominantBaseline="middle"
                     textAnchor={direction.x > 0 ? "start" : direction.x < 0 ? "end" : "middle"}
@@ -312,7 +354,7 @@ export const SymbolInstanceView = ({
                     x={numberX}
                     y={numberY}
                     fontSize={pinNumberFontSize}
-                    fill={kicadSchematicTheme.pinNumber}
+                    fill={schematicColorVar("pinNumber")}
                     fontFamily={kicadSchematicTheme.fontFamily}
                     dominantBaseline="middle"
                     textAnchor={direction.x > 0 ? "end" : direction.x < 0 ? "start" : "middle"}
@@ -325,28 +367,40 @@ export const SymbolInstanceView = ({
         : null}
 
       {showFieldLabels ? (
-        <>
-          <text
-            x={symbol.bounds.minX}
-            y={-(symbol.bounds.maxY + 56)}
-            fontSize={refFontSize}
-            fill={kicadSchematicTheme.refText}
-            fontFamily={kicadSchematicTheme.fontFamily}
-            fontWeight={700}
-          >
-            {displayRef}
-          </text>
-          <text
-            x={symbol.bounds.minX}
-            y={-(symbol.bounds.maxY + 8)}
-            fontSize={valueFontSize}
-            fill={kicadSchematicTheme.valueText}
-            fontFamily={kicadSchematicTheme.fontFamily}
-            fontWeight={700}
-          >
-            {displayValue}
-          </text>
-        </>
+        fieldCaption.compact ? (
+          renderFieldAnnotation(
+            `${instance.id}-compact-field`,
+            fieldCaption.compact,
+            symbol.bounds.minX,
+            -(symbol.bounds.maxY + 32),
+            compactFontSize,
+            schematicColorVar("valueText"),
+            instance.valueAnnotation ?? instance.refAnnotation,
+          )
+        ) : (
+          <>
+            {renderFieldAnnotation(
+              `${instance.id}-ref-field`,
+              fieldCaption.ref,
+              symbol.bounds.minX,
+              -(symbol.bounds.maxY + 56),
+              refFontSize,
+              schematicColorVar("refText"),
+              instance.refAnnotation,
+            )}
+            {fieldCaption.value
+              ? renderFieldAnnotation(
+                  `${instance.id}-value-field`,
+                  fieldCaption.value,
+                  symbol.bounds.minX,
+                  -(symbol.bounds.maxY + 8),
+                  valueFontSize,
+                  schematicColorVar("valueText"),
+                  instance.valueAnnotation,
+                )
+              : null}
+          </>
+        )
       ) : null}
     </g>
   );

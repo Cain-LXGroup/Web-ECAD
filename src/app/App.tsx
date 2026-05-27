@@ -6,6 +6,7 @@ import { APP_DISPLAY_VERSION } from "./version";
 import { CanvasContextMenu, type CanvasContextMenuTarget } from "../components/CanvasContextMenu";
 import { EditorContextRail } from "../components/EditorContextRail";
 import { EditorSettingsPanel } from "../components/EditorSettingsPanel";
+import { SchematicColorsPanel } from "../components/SchematicColorsPanel";
 import { UndoRedoRail } from "../components/UndoRedoRail";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ExportPanel } from "../components/ExportPanel";
@@ -21,8 +22,10 @@ import { WorkspaceMenu } from "../components/WorkspaceMenu";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SheetDrawer } from "../components/ui/SheetDrawer";
 import { BubbleButton } from "../components/ui/BubbleButton";
+import { chromeBody, chromeTitle } from "../components/ui/uiStyles";
 import { SchematicCanvas, type SchematicCanvasHandle } from "../editor/SchematicCanvas";
-import { computeNetHighlight } from "../editor/netHighlight";
+import { computeNetHighlight, type NetHighlightSet } from "../editor/netHighlight";
+import { FavouritesDockStrip } from "../components/FavouritesDockStrip";
 import { createDefaultSheet, normalizeProject } from "../editor/projectSheets";
 import { DEFAULT_GRID_SIZE } from "../editor/snapping";
 import { useEditorState } from "../editor/useEditorState";
@@ -98,6 +101,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<SchematicCanvasHandle | null>(null);
   const [contextMenuTarget, setContextMenuTarget] = useState<CanvasContextMenuTarget | null>(null);
+  const [isFavouritesDockOpen, setIsFavouritesDockOpen] = useState(false);
+  const [renamingSheetId, setRenamingSheetId] = useState<string | undefined>(undefined);
+  const [sheetRenameDraft, setSheetRenameDraft] = useState("");
   const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const autoSaveSkipRef = useRef(true);
   const appSettings = useAppSettings();
@@ -139,10 +145,28 @@ function App() {
     setStatusMessage("Zoomed to fit the schematic.");
   }, [editor, symbolIndex]);
 
-  const netHighlight = useMemo(
-    () => computeNetHighlight(editor.state.project, symbolIndex, editor.state.selectedIds),
-    [editor.state.project, editor.state.selectedIds, symbolIndex],
+  const emptyNetHighlight = useMemo<NetHighlightSet>(
+    () => ({
+      wireIds: new Set(),
+      labelIds: new Set(),
+      symbolInstanceIds: new Set(),
+    }),
+    [],
   );
+
+  const netHighlight = useMemo(() => {
+    if (!appSettings.netHighlightEnabled) {
+      return emptyNetHighlight;
+    }
+
+    return computeNetHighlight(editor.state.project, symbolIndex, editor.state.selectedIds);
+  }, [
+    appSettings.netHighlightEnabled,
+    editor.state.project,
+    editor.state.selectedIds,
+    emptyNetHighlight,
+    symbolIndex,
+  ]);
 
   useEffect(() => {
     console.info("[App] Scheduling debounced auto-save", { projectId: editor.state.project.id });
@@ -642,6 +666,16 @@ function App() {
       console.info("[App] Handling bottom toolbar action", { actionId });
 
       editor.setTool(actionId);
+      if (actionId === "label-global") {
+        setStatusMessage("Placing global net labels (⬡). Press G to switch back.");
+        return;
+      }
+
+      if (actionId === "label-sheet") {
+        setStatusMessage("Placing sheet-local net labels (▫). Press L to switch back.");
+        return;
+      }
+
       setStatusMessage(`Switched to ${actionId} tool.`);
     },
     [editor],
@@ -655,6 +689,16 @@ function App() {
     [editor.state.project.symbols, editor.state.selectedIds],
   );
 
+  const hasLabelSelection = useMemo(
+    () =>
+      editor.state.selectedIds.some((selectedId) =>
+        editor.state.project.netLabels.some((label) => label.id === selectedId),
+      ),
+    [editor.state.project.netLabels, editor.state.selectedIds],
+  );
+
+  const hasTransformableSelection = hasSymbolSelection || hasLabelSelection;
+
   const selectContextActions = useMemo(() => {
     if (editor.state.activeTool !== "select" || editor.state.selectedIds.length === 0) {
       return [];
@@ -665,20 +709,20 @@ function App() {
         id: "rotate",
         icon: "rotate" as const,
         label: "Rotate",
-        disabled: !hasSymbolSelection,
+        disabled: !hasTransformableSelection,
         onClick: () => {
           editor.rotateSelected();
-          setStatusMessage("Rotated the selected symbol.");
+          setStatusMessage(hasLabelSelection ? "Rotated the selected label." : "Rotated the selected symbol.");
         },
       },
       {
         id: "mirror",
         icon: "mirror" as const,
         label: "Mirror",
-        disabled: !hasSymbolSelection,
+        disabled: !hasTransformableSelection,
         onClick: () => {
           editor.mirrorSelected();
-          setStatusMessage("Mirrored the selected symbol.");
+          setStatusMessage(hasLabelSelection ? "Mirrored the selected label." : "Mirrored the selected symbol.");
         },
       },
       {
@@ -705,7 +749,8 @@ function App() {
     editor,
     editor.state.activeTool,
     editor.state.selectedIds.length,
-    hasSymbolSelection,
+    hasLabelSelection,
+    hasTransformableSelection,
     symbolIndex,
   ]);
 
@@ -730,6 +775,8 @@ function App() {
         symbolIndex={symbolIndex}
         selectedIds={editor.state.selectedIds}
         selectedCanvasObject={selectedCanvasObject}
+        netHighlightEnabled={appSettings.netHighlightEnabled}
+        onNetHighlightEnabledChange={appSettings.setNetHighlightEnabled}
       />
 
       <GlassPanel>
@@ -743,10 +790,10 @@ function App() {
         </p>
       </GlassPanel>
 
-      {editor.state.activeTool === "label" ? (
+      {editor.state.activeTool === "label-global" || editor.state.activeTool === "label-sheet" ? (
         <GlassPanel>
-          <h2 className="text-base font-semibold text-white">Net Label Scope</h2>
-          <p className="mt-2 text-sm text-slate-400">
+          <h2 className={chromeTitle}>Net Label Scope</h2>
+          <p className={`mt-2 ${chromeBody}`}>
             Global labels connect across sheets; sheet labels stay on this sheet only.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-3">
@@ -772,8 +819,8 @@ function App() {
       ) : null}
 
       <GlassPanel>
-        <h2 className="text-base font-semibold text-white">Wire Routing</h2>
-        <p className="mt-2 text-sm text-slate-400">
+        <h2 className={chromeTitle}>Wire Routing</h2>
+        <p className={`mt-2 ${chromeBody}`}>
           Manual keeps your placed corners. Auto re-traces a clean orthogonal path between the endpoints.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-3">
@@ -791,7 +838,7 @@ function App() {
       </GlassPanel>
 
       <GlassPanel className="hidden xl:block">
-        <h2 className="text-base font-semibold text-white">Wire Draft</h2>
+        <h2 className={chromeTitle}>Wire Draft</h2>
         <div className="mt-3 grid gap-3">
           <BubbleButton
             variant="primary"
@@ -817,26 +864,26 @@ function App() {
       </GlassPanel>
 
       <GlassPanel>
-        <h2 className="text-base font-semibold text-white">Local Data Status</h2>
-        <dl className="mt-4 space-y-3 text-sm text-slate-300">
+        <h2 className={chromeTitle}>Local Data Status</h2>
+        <dl className="mt-4 space-y-3 text-sm text-[var(--chrome-text)]">
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-slate-500">Symbols</dt>
+            <dt className="text-[var(--chrome-faint)]">Symbols</dt>
             <dd>{allSymbols.length}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-slate-500">Projects</dt>
+            <dt className="text-[var(--chrome-faint)]">Projects</dt>
             <dd>{projects.length}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-slate-500">Selected Symbol</dt>
+            <dt className="text-[var(--chrome-faint)]">Selected Symbol</dt>
             <dd>{selectedSymbolId ?? "None"}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-slate-500">Canvas Symbols</dt>
+            <dt className="text-[var(--chrome-faint)]">Canvas Symbols</dt>
             <dd>{editor.state.project.symbols.length}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-slate-500">Wire Mode</dt>
+            <dt className="text-[var(--chrome-faint)]">Wire Mode</dt>
             <dd>{editor.state.wireRoutingMode}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
@@ -900,6 +947,12 @@ function App() {
         onSchematicTextSizeChange={appSettings.setSchematicTextSize}
         onColorSchemeChange={appSettings.setColorScheme}
       />
+      <SchematicColorsPanel
+        colorScheme={appSettings.colorScheme}
+        schematicColors={appSettings.schematicColors}
+        onColorChange={appSettings.setSchematicColor}
+        onReset={appSettings.resetSchematicColors}
+      />
       <ExportPanel
         onExportBackup={() => {
           void handleExportBackup();
@@ -920,7 +973,7 @@ function App() {
   );
 
   return (
-    <div className="app-chrome flex h-svh flex-col overflow-hidden bg-transparent text-slate-100">
+    <div className="app-chrome flex h-svh flex-col overflow-hidden bg-transparent text-[var(--chrome-text)]">
       <div className="relative grid h-full min-h-0 w-full flex-1 gap-0 overflow-hidden p-0 xl:mx-auto xl:max-w-[1800px] xl:gap-4 xl:p-4 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
         <div className="hidden xl:block">
           <Sidebar title="Symbol Library">
@@ -973,26 +1026,73 @@ function App() {
             onClick={handleFitView}
           />
           <div className="pointer-events-auto flex max-w-[min(52vw,28rem)] flex-wrap items-center gap-1 rounded-full border border-[var(--chrome-border)] bg-[var(--chrome-panel)] px-2 py-1 shadow-[var(--chrome-shadow)] backdrop-blur-xl">
-            {projectSheets.map((sheet) => (
-              <button
-                key={sheet.id}
-                type="button"
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold touch-manipulation ${
-                  sheet.id === editor.state.activeSheetId
-                    ? "bg-cyan-500/25 text-cyan-100"
-                    : "text-slate-300 hover:bg-white/10"
-                }`}
-                onClick={() => {
-                  editor.setActiveSheet(sheet.id);
-                  setStatusMessage(`Switched to ${sheet.name}.`);
-                }}
-              >
-                {sheet.name}
-              </button>
-            ))}
+            {projectSheets.map((sheet) => {
+              const isActive = sheet.id === editor.state.activeSheetId;
+              const isRenaming = renamingSheetId === sheet.id;
+
+              if (isRenaming) {
+                return (
+                  <input
+                    key={sheet.id}
+                    autoFocus
+                    className="w-[7rem] rounded-full border border-cyan-400/50 bg-black/40 px-3 py-1.5 text-xs font-semibold text-white outline-none"
+                    value={sheetRenameDraft}
+                    onChange={(event) => setSheetRenameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        const trimmed = sheetRenameDraft.trim();
+                        if (trimmed) {
+                          editor.renameActiveSheet(trimmed);
+                          setStatusMessage(`Renamed sheet to "${trimmed}".`);
+                        }
+                        setRenamingSheetId(undefined);
+                      }
+
+                      if (event.key === "Escape") {
+                        setRenamingSheetId(undefined);
+                      }
+                    }}
+                    onBlur={() => {
+                      const trimmed = sheetRenameDraft.trim();
+                      if (trimmed && isActive) {
+                        editor.renameActiveSheet(trimmed);
+                        setStatusMessage(`Renamed sheet to "${trimmed}".`);
+                      }
+                      setRenamingSheetId(undefined);
+                    }}
+                  />
+                );
+              }
+
+              return (
+                <button
+                  key={sheet.id}
+                  type="button"
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold touch-manipulation ${
+                    isActive
+                      ? "bg-[var(--chrome-tab-active-bg)] text-[var(--chrome-tab-active-text)]"
+                      : "text-[var(--chrome-tab-idle-text)] hover:bg-[var(--chrome-tab-hover-bg)]"
+                  }`}
+                  onClick={() => {
+                    editor.setActiveSheet(sheet.id);
+                    setStatusMessage(`Switched to ${sheet.name}.`);
+                  }}
+                  onDoubleClick={() => {
+                    if (!isActive) {
+                      return;
+                    }
+
+                    setRenamingSheetId(sheet.id);
+                    setSheetRenameDraft(sheet.name);
+                  }}
+                >
+                  {sheet.name}
+                </button>
+              );
+            })}
             <button
               type="button"
-              className="rounded-full px-2 py-1.5 text-lg leading-none text-slate-300 hover:bg-white/10 touch-manipulation"
+              className="rounded-full px-2 py-1.5 text-lg leading-none text-[var(--chrome-tab-idle-text)] hover:bg-[var(--chrome-tab-hover-bg)] touch-manipulation"
               aria-label="Add sheet"
               onClick={() => {
                 editor.addSheet();
@@ -1001,6 +1101,25 @@ function App() {
             >
               +
             </button>
+            {editor.state.activeSheetId ? (
+              <button
+                type="button"
+                className="rounded-full px-2 py-1.5 text-xs font-semibold text-[var(--chrome-tab-idle-text)] hover:bg-[var(--chrome-tab-hover-bg)] touch-manipulation"
+                aria-label="Rename active sheet"
+                title="Rename active sheet"
+                onClick={() => {
+                  const activeSheet = projectSheets.find((sheet) => sheet.id === editor.state.activeSheetId);
+                  if (!activeSheet) {
+                    return;
+                  }
+
+                  setRenamingSheetId(activeSheet.id);
+                  setSheetRenameDraft(activeSheet.name);
+                }}
+              >
+                ✎
+              </button>
+            ) : null}
           </div>
           {autoSaveState !== "idle" ? (
             <span className="pointer-events-none self-center rounded-full border border-[var(--chrome-border)] bg-[var(--chrome-panel)] px-3 py-2 text-xs font-medium text-[var(--chrome-muted)] shadow-[var(--chrome-shadow)] backdrop-blur-xl">
@@ -1076,6 +1195,10 @@ function App() {
           <EditorRightRail
             activeTool={editor.state.activeTool}
             onAction={handleBottomToolbarAction}
+            favouritesOpen={isFavouritesDockOpen}
+            onToggleFavourites={() => {
+              setIsFavouritesDockOpen((current) => !current);
+            }}
             theme={appSettings.colorScheme}
           />
           {editor.state.activeTool === "wire" ? (
@@ -1115,6 +1238,10 @@ function App() {
             }}
           />
         </div>
+      ) : null}
+
+      {isFavouritesDockOpen ? (
+        <FavouritesDockStrip symbols={favoriteSymbols} onPlaceSymbol={handlePlaceSelectedSymbol} />
       ) : null}
 
       <SheetDrawer
@@ -1178,6 +1305,30 @@ function App() {
           setIsInspectorDrawerOpen(true);
           setStatusMessage("Opened inspector for the selected object.");
         }}
+        onNudgeSymbolAnnotation={
+          contextMenuTarget?.objectType === "symbol"
+            ? (field, direction) => {
+                editor.nudgeSymbolAnnotation(contextMenuTarget.objectId, field, direction);
+                setStatusMessage(`Moved ${field} label ${direction}.`);
+              }
+            : undefined
+        }
+        onRotateSymbolAnnotation={
+          contextMenuTarget?.objectType === "symbol"
+            ? (field) => {
+                editor.rotateSymbolAnnotation(contextMenuTarget.objectId, field);
+                setStatusMessage(`Rotated ${field} label.`);
+              }
+            : undefined
+        }
+        onToggleSymbolAnnotationHidden={
+          contextMenuTarget?.objectType === "symbol"
+            ? (field) => {
+                editor.toggleSymbolAnnotationHidden(contextMenuTarget.objectId, field);
+                setStatusMessage(`Toggled ${field} label visibility.`);
+              }
+            : undefined
+        }
       />
     </div>
   );

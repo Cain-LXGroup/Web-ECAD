@@ -21,7 +21,7 @@ import { SymbolInstanceView } from "./SymbolInstanceView";
 import { DEFAULT_SCHEMATIC_TEXT_SIZE } from "./schematicTextSizing";
 import type { Tool, WireDraftState } from "./useEditorState";
 import { getWireJunctionPoints } from "./wireRouting";
-import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { schematicColorVar } from "../theme/schematicTheme";
 import { WireNodeHandles, type WireNodeSelection } from "./WireNodeHandles";
 import { WireView } from "./WireView";
 import {
@@ -36,6 +36,8 @@ import { vibrateSnap } from "../lib/feedback";
 import { clientDeltaToWorldDelta, clientPointToWorld } from "./svgCoordinates";
 
 const TAP_DRAG_THRESHOLD_PX = 12;
+const isNetLabelTool = (tool: Tool): boolean => tool === "label-global" || tool === "label-sheet";
+
 const DOUBLE_TAP_MS = 320;
 const DOUBLE_TAP_DISTANCE_PX = 28;
 const INERTIA_FRICTION = 0.9;
@@ -630,7 +632,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
-    if (activeTool === "label") {
+    if (isNetLabelTool(activeTool)) {
       beginCanvasGesture(event, canvasPoint, { kind: "label" });
       return;
     }
@@ -946,10 +948,11 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
   return (
     <section
-      className="schematic-canvas relative min-h-0 flex-1 overflow-hidden rounded-none border-0 shadow-none xl:rounded-[2rem] xl:border xl:shadow-2xl xl:shadow-slate-950/50"
+      className="schematic-canvas relative min-h-0 flex-1 overflow-hidden rounded-none border-0 shadow-none xl:rounded-[2rem] xl:border xl:shadow-2xl"
       style={{
-        borderColor: "rgba(192, 112, 112, 0.28)",
-        backgroundColor: kicadSchematicTheme.background,
+        borderColor: "var(--chrome-canvas-frame-border)",
+        backgroundColor: schematicColorVar("background"),
+        boxShadow: "0 25px 50px -12px var(--chrome-canvas-frame-shadow)",
         touchAction: "none",
         WebkitUserSelect: "none",
         userSelect: "none",
@@ -971,7 +974,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       >
         <defs>
           <pattern id="schematic-grid-pattern" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
-            <circle cx={gridSize / 2} cy={gridSize / 2} r="1.5" fill={kicadSchematicTheme.gridDot} />
+            <circle cx={gridSize / 2} cy={gridSize / 2} r="1.5" fill={schematicColorVar("gridDot")} />
           </pattern>
         </defs>
 
@@ -980,7 +983,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
           y={worldFillRect.y}
           width={worldFillRect.width}
           height={worldFillRect.height}
-          fill={kicadSchematicTheme.background}
+          fill={schematicColorVar("background")}
         />
         <rect
           x={worldFillRect.x}
@@ -996,7 +999,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             cy={snapIndicatorPoint.y}
             r={14}
             fill="none"
-            stroke="rgba(34, 211, 238, 0.85)"
+            stroke={schematicColorVar("snapIndicator")}
             strokeWidth={4}
             pointerEvents="none"
           />
@@ -1019,8 +1022,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             cx={junctionPoint.x}
             cy={junctionPoint.y}
             r={8}
-            fill={kicadSchematicTheme.junction}
-            stroke={kicadSchematicTheme.junctionStroke}
+            fill={schematicColorVar("junction")}
+            stroke={schematicColorVar("junctionStroke")}
             strokeWidth={3}
           />
         ))}

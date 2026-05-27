@@ -101,7 +101,8 @@ export const useEditorKeyboardShortcuts = ({
       const toolByKey: Record<string, Tool> = {
         v: "select",
         w: "wire",
-        l: "label",
+        l: "label-sheet",
+        g: "label-global",
         t: "text",
       };
 

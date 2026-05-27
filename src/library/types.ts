@@ -87,6 +87,13 @@ export type LibrarySymbol = {
   importedAt: number;
 };
 
+export type SymbolFieldAnnotation = {
+  /** Offset from default label position in symbol-local coordinates. */
+  offset?: Point;
+  rotation?: 0 | 90 | 180 | 270;
+  hidden?: boolean;
+};
+
 export type SymbolInstance = {
   id: string;
   symbolId: string;
@@ -96,6 +103,8 @@ export type SymbolInstance = {
   y: number;
   rotation: 0 | 90 | 180 | 270;
   mirrored: boolean;
+  refAnnotation?: SymbolFieldAnnotation;
+  valueAnnotation?: SymbolFieldAnnotation;
 };
 
 export type WireConnection = {
@@ -123,6 +132,7 @@ export type NetLabel = {
   x: number;
   y: number;
   rotation: 0 | 90 | 180 | 270;
+  mirrored?: boolean;
   labelScope?: NetLabelScope;
   pinConnection?: WireConnection;
   wireId?: string;
