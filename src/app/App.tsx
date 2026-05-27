@@ -414,6 +414,8 @@ function App() {
     setActiveProjectId(updatedProject.id);
     setEditorSeedProject(updatedProject);
     editor.loadProject(updatedProject);
+    autoSaveSkipRef.current = true;
+    setAutoSaveState("saved");
     setStatusMessage(`Saved project "${updatedProject.name}".`);
   }, [editor, refreshProjects]);
 
