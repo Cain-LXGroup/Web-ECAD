@@ -115,14 +115,26 @@ export type Wire = {
   endWireId?: string;
 };
 
+export type NetLabelScope = "global" | "sheet";
+
 export type NetLabel = {
   id: string;
   text: string;
   x: number;
   y: number;
   rotation: 0 | 90 | 180 | 270;
+  labelScope?: NetLabelScope;
   pinConnection?: WireConnection;
   wireId?: string;
+};
+
+export type SchematicSheet = {
+  id: string;
+  name: string;
+  symbols: SymbolInstance[];
+  wires: Wire[];
+  netLabels: NetLabel[];
+  textNotes: TextNote[];
 };
 
 export type TextNote = {
@@ -144,4 +156,6 @@ export type SchematicProject = {
   netLabels: NetLabel[];
   textNotes: TextNote[];
   gridSize: number;
+  sheets: SchematicSheet[];
+  activeSheetId?: string;
 };
