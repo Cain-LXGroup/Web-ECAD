@@ -1,4 +1,8 @@
 import type { ColorScheme } from "../hooks/useAppSettings";
+import {
+  MAX_SCHEMATIC_TEXT_SIZE,
+  MIN_SCHEMATIC_TEXT_SIZE,
+} from "../editor/schematicTextSizing";
 import { GlassPanel } from "./ui/GlassPanel";
 import { glassPanelInset } from "./ui/uiStyles";
 
@@ -6,10 +10,12 @@ type EditorSettingsPanelProps = {
   fingerPansOnly: boolean;
   soundEnabled: boolean;
   wireRouteClearance: number;
+  schematicTextSize: number;
   colorScheme: ColorScheme;
   onFingerPansOnlyChange: (enabled: boolean) => void;
   onSoundEnabledChange: (enabled: boolean) => void;
   onWireRouteClearanceChange: (clearance: number) => void;
+  onSchematicTextSizeChange: (size: number) => void;
   onColorSchemeChange: (scheme: ColorScheme) => void;
 };
 
@@ -17,16 +23,19 @@ export const EditorSettingsPanel = ({
   fingerPansOnly,
   soundEnabled,
   wireRouteClearance,
+  schematicTextSize,
   colorScheme,
   onFingerPansOnlyChange,
   onSoundEnabledChange,
   onWireRouteClearanceChange,
+  onSchematicTextSizeChange,
   onColorSchemeChange,
 }: EditorSettingsPanelProps) => {
   console.info("[EditorSettingsPanel] Rendering editor settings panel", {
     fingerPansOnly,
     soundEnabled,
     wireRouteClearance,
+    schematicTextSize,
     colorScheme,
   });
 
@@ -51,6 +60,25 @@ export const EditorSettingsPanel = ({
           />
           <p className="text-xs text-[var(--chrome-muted)]">
             Increase if auto wires still clip symbols; decrease for tighter routing.
+          </p>
+        </label>
+
+        <label className="block space-y-2 text-sm text-[var(--chrome-text)]">
+          <div className="flex items-center justify-between gap-3">
+            <span>Schematic text size</span>
+            <span className="font-mono text-cyan-300">{schematicTextSize}px</span>
+          </div>
+          <input
+            className="w-full accent-cyan-400"
+            type="range"
+            min={MIN_SCHEMATIC_TEXT_SIZE}
+            max={MAX_SCHEMATIC_TEXT_SIZE}
+            step={2}
+            value={schematicTextSize}
+            onChange={(event) => onSchematicTextSizeChange(Number(event.target.value))}
+          />
+          <p className="text-xs text-[var(--chrome-muted)]">
+            Net labels, text notes, and symbol reference text on the canvas.
           </p>
         </label>
 

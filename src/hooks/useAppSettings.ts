@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 
+import {
+  DEFAULT_SCHEMATIC_TEXT_SIZE,
+  clampSchematicTextSize,
+} from "../editor/schematicTextSizing";
 import { getAppSetting, setAppSetting } from "../storage/settingsStore";
 
 const FINGER_PAN_ONLY_KEY = "editor.fingerPansOnly";
 const SOUND_ENABLED_KEY = "editor.soundEnabled";
 const WIRE_ROUTE_CLEARANCE_KEY = "editor.wireRouteClearance";
+const SCHEMATIC_TEXT_SIZE_KEY = "editor.schematicTextSize";
 const COLOR_SCHEME_KEY = "editor.colorScheme";
 
 export type ColorScheme = "dark" | "light";
@@ -17,6 +22,7 @@ export const useAppSettings = () => {
   const [fingerPansOnly, setFingerPansOnlyState] = useState(true);
   const [soundEnabled, setSoundEnabledState] = useState(false);
   const [wireRouteClearance, setWireRouteClearanceState] = useState(DEFAULT_WIRE_ROUTE_CLEARANCE);
+  const [schematicTextSize, setSchematicTextSizeState] = useState(DEFAULT_SCHEMATIC_TEXT_SIZE);
   const [colorScheme, setColorSchemeState] = useState<ColorScheme>("dark");
   const [isReady, setIsReady] = useState(false);
 
@@ -24,10 +30,11 @@ export const useAppSettings = () => {
     console.info("[useAppSettings] Loading persisted settings");
 
     void (async () => {
-      const [fingerPanValue, soundValue, clearanceValue, schemeValue] = await Promise.all([
+      const [fingerPanValue, soundValue, clearanceValue, textSizeValue, schemeValue] = await Promise.all([
         getAppSetting(FINGER_PAN_ONLY_KEY),
         getAppSetting(SOUND_ENABLED_KEY),
         getAppSetting(WIRE_ROUTE_CLEARANCE_KEY),
+        getAppSetting(SCHEMATIC_TEXT_SIZE_KEY),
         getAppSetting(COLOR_SCHEME_KEY),
       ]);
 
@@ -43,6 +50,13 @@ export const useAppSettings = () => {
         const parsed = Number(clearanceValue);
         if (Number.isFinite(parsed)) {
           setWireRouteClearanceState(parsed);
+        }
+      }
+
+      if (textSizeValue !== undefined) {
+        const parsed = Number(textSizeValue);
+        if (Number.isFinite(parsed)) {
+          setSchematicTextSizeState(clampSchematicTextSize(parsed));
         }
       }
 
@@ -84,6 +98,14 @@ export const useAppSettings = () => {
     void setAppSetting(WIRE_ROUTE_CLEARANCE_KEY, String(clamped));
   }, []);
 
+  const setSchematicTextSize = useCallback((size: number) => {
+    console.info("[useAppSettings] Updating schematic text size", { size });
+
+    const clamped = clampSchematicTextSize(size);
+    setSchematicTextSizeState(clamped);
+    void setAppSetting(SCHEMATIC_TEXT_SIZE_KEY, String(clamped));
+  }, []);
+
   const setColorScheme = useCallback((scheme: ColorScheme) => {
     console.info("[useAppSettings] Updating color scheme", { scheme });
 
@@ -95,11 +117,13 @@ export const useAppSettings = () => {
     fingerPansOnly,
     soundEnabled,
     wireRouteClearance,
+    schematicTextSize,
     colorScheme,
     isReady,
     setFingerPansOnly,
     setSoundEnabled,
     setWireRouteClearance,
+    setSchematicTextSize,
     setColorScheme,
   };
 };

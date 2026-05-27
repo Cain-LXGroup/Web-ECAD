@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useLongPress } from "../hooks/useLongPress";
 import { getPinBodyPoint, getPinDirection } from "../library/symbolGeometry";
 import type { LibrarySymbol, SymbolGraphic, SymbolInstance, WireConnection } from "../library/types";
+import { DEFAULT_SCHEMATIC_TEXT_SIZE, scaleThemeFontSize } from "./schematicTextSizing";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 
 const ARC_TOLERANCE = 0.01;
@@ -147,6 +148,7 @@ type SymbolInstanceViewProps = {
   symbol: LibrarySymbol;
   instance: SymbolInstance;
   selected: boolean;
+  schematicTextSize?: number;
   showPinLabels?: boolean;
   showFieldLabels?: boolean;
   onPointerDown?: (event: ReactPointerEvent<SVGGElement>) => void;
@@ -158,6 +160,7 @@ export const SymbolInstanceView = ({
   symbol,
   instance,
   selected,
+  schematicTextSize = DEFAULT_SCHEMATIC_TEXT_SIZE,
   showPinLabels = true,
   showFieldLabels = true,
   onPointerDown,
@@ -174,6 +177,10 @@ export const SymbolInstanceView = ({
   const boundsHeight = symbol.bounds.maxY - symbol.bounds.minY;
   const displayValue = instance.value || symbol.properties?.Value || symbol.name;
   const displayRef = instance.ref || `${symbol.referencePrefix ?? "U"}?`;
+  const refFontSize = scaleThemeFontSize(kicadSchematicTheme.refFontSize, schematicTextSize);
+  const valueFontSize = scaleThemeFontSize(kicadSchematicTheme.valueFontSize, schematicTextSize);
+  const pinNameFontSize = scaleThemeFontSize(kicadSchematicTheme.pinNameFontSize, schematicTextSize);
+  const pinNumberFontSize = scaleThemeFontSize(kicadSchematicTheme.pinNumberFontSize, schematicTextSize);
 
   const longPressHandlers = useLongPress(
     (event) => {
@@ -279,7 +286,7 @@ export const SymbolInstanceView = ({
                   <text
                     x={nameX}
                     y={nameY}
-                    fontSize={kicadSchematicTheme.pinNameFontSize}
+                    fontSize={pinNameFontSize}
                     fill={kicadSchematicTheme.pinName}
                     fontFamily={kicadSchematicTheme.fontFamily}
                     dominantBaseline="middle"
@@ -290,7 +297,7 @@ export const SymbolInstanceView = ({
                   <text
                     x={numberX}
                     y={numberY}
-                    fontSize={kicadSchematicTheme.pinNumberFontSize}
+                    fontSize={pinNumberFontSize}
                     fill={kicadSchematicTheme.pinNumber}
                     fontFamily={kicadSchematicTheme.fontFamily}
                     dominantBaseline="middle"
@@ -308,7 +315,7 @@ export const SymbolInstanceView = ({
           <text
             x={symbol.bounds.minX}
             y={-(symbol.bounds.maxY + 56)}
-            fontSize={kicadSchematicTheme.refFontSize}
+            fontSize={refFontSize}
             fill={kicadSchematicTheme.refText}
             fontFamily={kicadSchematicTheme.fontFamily}
             fontWeight={700}
@@ -318,7 +325,7 @@ export const SymbolInstanceView = ({
           <text
             x={symbol.bounds.minX}
             y={-(symbol.bounds.maxY + 8)}
-            fontSize={kicadSchematicTheme.valueFontSize}
+            fontSize={valueFontSize}
             fill={kicadSchematicTheme.valueText}
             fontFamily={kicadSchematicTheme.fontFamily}
             fontWeight={700}
