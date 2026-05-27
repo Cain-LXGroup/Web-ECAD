@@ -4,7 +4,7 @@ Tablet-first, offline-capable schematic templating PWA built with Vite, React, a
 
 ## Roadmap
 
-Tablet gestures, pencil modes, undo, minimap, and productivity features are planned in three stages. See **[ROADMAP.md](./ROADMAP.md)** for the full rollout.
+Tablet feel (undo, pencil modes, gestures) is shipped. Current work: multi-select, clipboard, favourites, global/sheet labels, multiple sheets, net highlight, and auto-save. See **[ROADMAP.md](./ROADMAP.md)**.
 
 ## Local development
 
