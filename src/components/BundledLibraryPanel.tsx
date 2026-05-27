@@ -3,7 +3,7 @@ import { bundledLibraryPacks } from "../library/bundledLibraryCatalog";
 import type { BundledLibrarySeedProgress } from "../library/seedBundledLibraries";
 import { BubbleButton } from "./ui/BubbleButton";
 import { GlassPanel } from "./ui/GlassPanel";
-import { chromeBody, chromeTitle, glassPanelInset } from "./ui/uiStyles";
+import { glassPanelInset } from "./ui/uiStyles";
 
 type BundledLibraryPanelProps = {
   installedPacks: Partial<Record<BundledLibraryPackId, boolean>>;
