@@ -1102,9 +1102,9 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       <CanvasHud measureLabel={measureLabel} />
 
       {isCanvasEmpty ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-6 mx-auto max-w-2xl rounded-[2rem] border border-slate-800 bg-slate-950/85 p-6 text-center backdrop-blur">
-          <h2 className="text-3xl font-semibold text-white">Welcome to Schematic Tablet.</h2>
-          <ol className="mt-4 space-y-3 text-left text-lg leading-relaxed text-slate-200">
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 mx-auto max-w-2xl rounded-[2rem] border border-[var(--chrome-border)] bg-[var(--chrome-panel)] p-6 text-center shadow-[var(--chrome-shadow)] backdrop-blur">
+          <h2 className="text-3xl font-semibold text-[var(--chrome-heading)]">Welcome to Schematic Tablet.</h2>
+          <ol className="mt-4 space-y-3 text-left text-lg leading-relaxed text-[var(--chrome-text)]">
             <li>1. Load the starter symbols or import a KiCad library.</li>
             <li>2. Search for a symbol and tap Place.</li>
             <li>3. Tap the canvas to place it, then drag to move it.</li>

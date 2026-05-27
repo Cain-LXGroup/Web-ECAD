@@ -3,7 +3,7 @@ import { useRef } from "react";
 import { BundledLibraryPanel } from "./BundledLibraryPanel";
 import { BubbleButton } from "./ui/BubbleButton";
 import { GlassPanel } from "./ui/GlassPanel";
-import { glassPanelInset } from "./ui/uiStyles";
+import { chromeBody, chromeTitle, glassPanelInset } from "./ui/uiStyles";
 import type { BundledLibraryPackId } from "../library/bundledLibraryCatalog";
 import type { BundledLibrarySeedProgress } from "../library/seedBundledLibraries";
 
@@ -45,12 +45,12 @@ export const ImportPanel = ({
     <GlassPanel>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-white">Import Library</h3>
-          <p className="mt-1 text-sm text-slate-400">
+          <h3 className={chromeTitle}>Import Library</h3>
+          <p className={`mt-1 ${chromeBody}`}>
             Import KiCad legacy `.lib` symbol libraries for offline search and placement.
           </p>
         </div>
-        <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
+        <span className="rounded-full border border-[var(--chrome-border)] px-3 py-1 text-xs text-[var(--chrome-muted)]">
           {symbolCount} stored
         </span>
       </div>
@@ -74,7 +74,7 @@ export const ImportPanel = ({
 
         <BubbleButton
           variant="secondary"
-          className="w-full border border-dashed border-white/20 !text-left"
+          className="w-full border border-dashed border-[var(--chrome-border-strong)] !text-left"
           disabled={isImporting}
           onClick={() => inputRef.current?.click()}
         >
@@ -85,16 +85,19 @@ export const ImportPanel = ({
           Load Starter Symbols
         </BubbleButton>
 
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-[var(--chrome-faint)]">
           The starter library seeds resistor, capacitor, diode, op amp, connector, IC, ground, and VCC symbols.
         </p>
 
         {importStatus && importStatus.length > 0 ? (
           <div className={`max-h-48 space-y-2 overflow-y-auto p-3 ${glassPanelInset}`}>
             {importStatus.map((result) => (
-              <div key={result.fileName} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-sm">
-                <p className="font-medium text-white">{result.fileName}</p>
-                <p className="mt-1 text-slate-400">
+              <div
+                key={result.fileName}
+                className="rounded-xl border border-[var(--chrome-border)] bg-[var(--chrome-inset-bg)] p-3 text-sm"
+              >
+                <p className="font-medium text-[var(--chrome-heading)]">{result.fileName}</p>
+                <p className="mt-1 text-[var(--chrome-muted)]">
                   Imported {result.importedCount} symbol{result.importedCount === 1 ? "" : "s"}
                   {result.skippedCount > 0 ? `, skipped ${result.skippedCount}` : ""}.
                 </p>

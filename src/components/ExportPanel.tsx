@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 
 import { BubbleButton } from "./ui/BubbleButton";
 import { GlassPanel } from "./ui/GlassPanel";
-import { glassPanelInset } from "./ui/uiStyles";
+import { chromeBody, chromeTitle, glassPanelInset } from "./ui/uiStyles";
 
 type ExportPanelProps = {
   onExportBackup: () => void;
@@ -41,8 +41,8 @@ export const ExportPanel = ({
   return (
     <GlassPanel>
       <div className="mb-3">
-        <h3 className="text-base font-semibold text-white">Export</h3>
-        <p className="mt-1 text-sm text-slate-400">
+        <h3 className={chromeTitle}>Export</h3>
+        <p className={`mt-1 ${chromeBody}`}>
           Export the current view, project file, or a full local backup of symbols and projects.
         </p>
       </div>
