@@ -75,3 +75,22 @@ The build picks the repository name automatically from `GITHUB_REPOSITORY`, so a
 - Library installs fetch symbol files from GitHub (`raw.githubusercontent.com`); that works over HTTPS on Pages.
 - Data is stored locally in the browser (IndexedDB) on each device.
 - If the repository is renamed, the next deploy updates paths automatically; bookmark the new URL.
+
+## Editor shortcuts (keyboard)
+
+| Key | Action |
+|-----|--------|
+| `V` | Select tool |
+| `W` | Wire tool |
+| `L` | Net label |
+| `T` | Text note |
+| `H` / `P` | Pan |
+| `Enter` | Place / finish wire (while drafting) |
+| `Esc` | Cancel wire draft |
+| `Delete` | Delete selection |
+
+## Export (Workspace menu)
+
+- **SVG / PNG / PDF** — exports the **current canvas view** (pan and zoom as shown).
+- **Project JSON** — saves the active schematic project only.
+- **Backup** — exports or restores all local symbols and projects (IndexedDB).

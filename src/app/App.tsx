@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import { bottomToolbarActions } from "./routes";
@@ -10,12 +10,22 @@ import { ProjectPanel } from "../components/ProjectPanel";
 import { Sidebar } from "../components/Sidebar";
 import { SymbolSearchPanel } from "../components/SymbolSearchPanel";
 import { Toolbar } from "../components/Toolbar";
+import { EditorToolDock } from "../components/EditorToolDock";
+import { FloatingChromeButton } from "../components/FloatingChromeButton";
 import { WireToolPalette } from "../components/WireToolPalette";
 import { WorkspaceMenu } from "../components/WorkspaceMenu";
-import { SchematicCanvas } from "../editor/SchematicCanvas";
+import { GlassPanel } from "../components/ui/GlassPanel";
+import { SheetDrawer } from "../components/ui/SheetDrawer";
+import { BubbleButton } from "../components/ui/BubbleButton";
+import { SchematicCanvas, type SchematicCanvasHandle } from "../editor/SchematicCanvas";
 import { DEFAULT_GRID_SIZE } from "../editor/snapping";
 import { useEditorState } from "../editor/useEditorState";
 import { exportBackup, importBackup } from "../export/backup";
+import { exportPdf } from "../export/exportPdf";
+import { exportPng } from "../export/exportPng";
+import { exportProjectJson } from "../export/exportProjectJson";
+import { exportSvg } from "../export/exportSvg";
+import { useEditorKeyboardShortcuts } from "../hooks/useEditorKeyboardShortcuts";
 import type { BundledLibraryPackId } from "../library/bundledLibraryCatalog";
 import { importLibraryFiles } from "../library/importLibraryFiles";
 import {
@@ -75,6 +85,7 @@ function App() {
   const [isLibraryDrawerOpen, setIsLibraryDrawerOpen] = useState(false);
   const [isInspectorDrawerOpen, setIsInspectorDrawerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const canvasRef = useRef<SchematicCanvasHandle | null>(null);
 
   const symbolIndex = useMemo(
     () =>
@@ -86,6 +97,34 @@ function App() {
   );
 
   const editor = useEditorState(editorSeedProject, symbolIndex);
+
+  const getCanvasSvg = useCallback(() => {
+    console.info("[App] Resolving schematic canvas SVG for export");
+
+    const svg = canvasRef.current?.getSvgElement();
+    if (!svg) {
+      throw new Error("Schematic canvas is not ready yet.");
+    }
+
+    return svg;
+  }, []);
+
+  useEditorKeyboardShortcuts({
+    onSetTool: editor.setTool,
+    onDeleteSelected: () => {
+      editor.deleteSelected();
+      setStatusMessage("Deleted the selected object.");
+    },
+    onCancelWire: () => {
+      editor.cancelWire();
+      setStatusMessage("Cancelled the current wire draft.");
+    },
+    onFinishWire: () => {
+      editor.finishWire();
+      setStatusMessage("Placed the current wire.");
+    },
+    hasWireDraft: Boolean(editor.state.wireDraft),
+  });
   const activeProject = useMemo(
     () => projects.find((project) => project.id === activeProjectId),
     [activeProjectId, projects],
@@ -397,6 +436,49 @@ function App() {
     setStatusMessage("Exported a full local backup JSON file.");
   }, []);
 
+  const handleExportProjectJson = useCallback(() => {
+    console.info("[App] Handling project JSON export");
+
+    exportProjectJson(editor.state.project);
+    setStatusMessage(`Exported "${editor.state.project.name}" as JSON.`);
+  }, [editor.state.project]);
+
+  const handleExportSvg = useCallback(() => {
+    console.info("[App] Handling SVG export");
+
+    try {
+      exportSvg(getCanvasSvg(), editor.state.project.name);
+      setStatusMessage("Exported the current schematic view as SVG.");
+    } catch (error) {
+      console.error("[App] SVG export failed", error);
+      setStatusMessage("SVG export failed. Try again after the canvas finishes loading.");
+    }
+  }, [editor.state.project.name, getCanvasSvg]);
+
+  const handleExportPng = useCallback(async () => {
+    console.info("[App] Handling PNG export");
+
+    try {
+      await exportPng(getCanvasSvg(), editor.state.project.name);
+      setStatusMessage("Exported the current schematic view as PNG.");
+    } catch (error) {
+      console.error("[App] PNG export failed", error);
+      setStatusMessage("PNG export failed. Try again after the canvas finishes loading.");
+    }
+  }, [editor.state.project.name, getCanvasSvg]);
+
+  const handleExportPdf = useCallback(async () => {
+    console.info("[App] Handling PDF export");
+
+    try {
+      await exportPdf(getCanvasSvg(), editor.state.project.name);
+      setStatusMessage("Exported the current schematic view as PDF.");
+    } catch (error) {
+      console.error("[App] PDF export failed", error);
+      setStatusMessage("PDF export failed. Try again after the canvas finishes loading.");
+    }
+  }, [editor.state.project.name, getCanvasSvg]);
+
   const handleImportBackup = useCallback(
     async (file: File) => {
       console.info("[App] Handling backup import", { fileName: file.name });
@@ -493,7 +575,7 @@ function App() {
         selectedCanvasObject={selectedCanvasObject}
       />
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <GlassPanel>
         <h2 className="text-base font-semibold text-white">Placement</h2>
         <p className="mt-2 text-sm text-slate-400">
           {editor.state.placingSymbolId
@@ -502,48 +584,42 @@ function App() {
               ? `Selected library symbol: ${selectedLibrarySymbol.name}`
               : "Choose a library symbol, then tap Place."}
         </p>
-      </section>
+      </GlassPanel>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <GlassPanel>
         <h2 className="text-base font-semibold text-white">Wire Routing</h2>
         <p className="mt-2 text-sm text-slate-400">
           Manual keeps your placed corners. Auto re-traces a clean orthogonal path between the endpoints.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           {(["manual", "auto"] as const).map((routingMode) => (
-            <button
+            <BubbleButton
               key={routingMode}
-              className={`touch-manipulation rounded-2xl border px-4 py-3 text-base font-medium transition-colors ${
-                editor.state.wireRoutingMode === routingMode
-                  ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-                  : "border-slate-700 bg-slate-950 text-white hover:border-cyan-400 hover:text-cyan-300"
-              }`}
-              type="button"
+              variant={editor.state.wireRoutingMode === routingMode ? "primary" : "secondary"}
+              className="w-full !py-2.5 text-sm"
               onClick={() => handleWireRoutingModeChange(routingMode)}
             >
               {routingMode === "manual" ? "Manual" : "Auto Route"}
-            </button>
+            </BubbleButton>
           ))}
         </div>
-      </section>
+      </GlassPanel>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <GlassPanel className="hidden xl:block">
         <h2 className="text-base font-semibold text-white">Wire Draft</h2>
         <div className="mt-3 grid gap-3">
-          <button
-            className="touch-manipulation rounded-2xl bg-cyan-500 px-4 py-3 text-base font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-            type="button"
+          <BubbleButton
+            variant="primary"
             disabled={!editor.state.wireDraft || editor.state.wireDraft.points.length < 2}
             onClick={() => {
               editor.finishWire();
               setStatusMessage("Finished the current wire.");
             }}
           >
-            Finish Wire
-          </button>
-          <button
-            className="touch-manipulation rounded-2xl bg-slate-800 px-4 py-3 text-base font-medium text-white disabled:cursor-not-allowed disabled:text-slate-500"
-            type="button"
+            Place Wire
+          </BubbleButton>
+          <BubbleButton
+            variant="secondary"
             disabled={!editor.state.wireDraft}
             onClick={() => {
               editor.cancelWire();
@@ -551,11 +627,11 @@ function App() {
             }}
           >
             Cancel Wire
-          </button>
+          </BubbleButton>
         </div>
-      </section>
+      </GlassPanel>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <GlassPanel>
         <h2 className="text-base font-semibold text-white">Local Data Status</h2>
         <dl className="mt-4 space-y-3 text-sm text-slate-300">
           <div className="flex items-center justify-between gap-3">
@@ -583,12 +659,14 @@ function App() {
             <dd>{isLoading ? "Loading" : "Ready"}</dd>
           </div>
         </dl>
-      </section>
+      </GlassPanel>
     </>
   );
 
+  const isFloatingChromeHidden = isLibraryDrawerOpen || isInspectorDrawerOpen;
+
   return (
-    <div className="flex h-svh flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex h-svh flex-col overflow-hidden bg-transparent text-slate-100">
       <Toolbar
         projectName={editor.state.project.name}
         statusMessage={statusMessage}
@@ -640,6 +718,14 @@ function App() {
               onImportBackup={(file) => {
                 void handleImportBackup(file);
               }}
+              onExportProjectJson={handleExportProjectJson}
+              onExportSvg={handleExportSvg}
+              onExportPng={() => {
+                void handleExportPng();
+              }}
+              onExportPdf={() => {
+                void handleExportPdf();
+              }}
             />
           </WorkspaceMenu>
         }
@@ -659,31 +745,27 @@ function App() {
           </Sidebar>
         </div>
 
-        <div className="absolute left-3 top-3 z-40 flex gap-2 xl:hidden">
-          <button
-            className="touch-manipulation rounded-full border border-slate-700 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-slate-100"
-            type="button"
+        <div className="pointer-events-none absolute left-3 top-3 z-40 flex gap-2 xl:hidden">
+          <FloatingChromeButton
+            className="pointer-events-auto"
+            label="Symbols"
             onClick={() => {
               console.info("[App] Toggling symbol library drawer", { next: !isLibraryDrawerOpen });
               setIsLibraryDrawerOpen((current) => !current);
             }}
-          >
-            Symbols
-          </button>
-          <button
-            className="touch-manipulation rounded-full border border-slate-700 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-slate-100"
-            type="button"
+          />
+          <FloatingChromeButton
+            className="pointer-events-auto"
+            label="Inspector"
             onClick={() => {
               console.info("[App] Toggling inspector drawer", { next: !isInspectorDrawerOpen });
               setIsInspectorDrawerOpen((current) => !current);
             }}
-          >
-            Inspector
-          </button>
+          />
         </div>
 
         <div className="flex min-h-0 flex-col gap-4 pb-24 xl:pb-0">
-          {editor.state.activeTool === "wire" ? (
+          {editor.state.activeTool === "wire" && !isFloatingChromeHidden ? (
             <WireToolPalette
               canPlaceWire={Boolean(editor.state.wireDraft && editor.state.wireDraft.points.length >= 2)}
               canCancelWire={Boolean(editor.state.wireDraft)}
@@ -699,12 +781,14 @@ function App() {
           ) : null}
 
           <SchematicCanvas
+            ref={canvasRef}
             project={editor.state.project}
             symbolIndex={symbolIndex}
             selectedIds={editor.state.selectedIds}
             activeTool={editor.state.activeTool}
             placingSymbolId={editor.state.placingSymbolId}
             wireDraft={editor.state.wireDraft}
+            getWirePreviewPoints={editor.getWirePreviewPoints}
             zoom={editor.state.zoom}
             pan={editor.state.pan}
             onSelectObject={editor.selectObject}
@@ -720,102 +804,53 @@ function App() {
             onSetZoom={editor.setZoom}
           />
 
-          <div className="hidden gap-3 rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 md:grid-cols-4 xl:grid">
-            {bottomToolbarActions.map((action) => (
-              <button
-                key={action.id}
-                className={`touch-manipulation rounded-2xl border px-4 py-3 text-base font-medium transition-colors ${
-                  editor.state.activeTool === action.id
-                    ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-                    : "border-slate-700 bg-slate-950 text-white hover:border-cyan-400 hover:text-cyan-300"
-                }`}
-                type="button"
-                onClick={() => handleBottomToolbarAction(action.id)}
-              >
-                {action.label}
-              </button>
-            ))}
+          <div className="hidden justify-center xl:flex">
+            <EditorToolDock
+              activeTool={editor.state.activeTool}
+              onAction={handleBottomToolbarAction}
+            />
           </div>
         </div>
 
-        <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 xl:flex">
+        <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto xl:flex">
           {inspectorSections}
         </aside>
       </div>
 
-      <div className="fixed inset-x-0 bottom-3 z-50 px-3 xl:hidden">
-        <div className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-700 bg-slate-950/90 p-2 shadow-2xl shadow-black/50">
-          {bottomToolbarActions.map((action) => (
-            <button
-              key={action.id}
-              className={`min-w-[108px] touch-manipulation rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                editor.state.activeTool === action.id
-                  ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-                  : "border-slate-700 bg-slate-950 text-white hover:border-cyan-400 hover:text-cyan-300"
-              }`}
-              type="button"
-              onClick={() => handleBottomToolbarAction(action.id)}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {isLibraryDrawerOpen ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 xl:hidden" onClick={() => setIsLibraryDrawerOpen(false)}>
-          <div
-            className="h-full max-w-md overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/95 p-4"
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">Symbol Library</h2>
-              <button
-                className="rounded-full border border-slate-600 px-3 py-1 text-sm text-slate-200"
-                type="button"
-                onClick={() => setIsLibraryDrawerOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="h-[calc(100%-44px)]">
-              <SymbolSearchPanel
-                query={symbolQuery}
-                symbols={visibleSymbols}
-                selectedSymbolId={selectedSymbolId}
-                onQueryChange={setSymbolQuery}
-                onSelectSymbol={setSelectedSymbolId}
-                onPlaceSymbol={handlePlaceSelectedSymbol}
-              />
-            </div>
-          </div>
+      {!isFloatingChromeHidden ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-3 xl:hidden">
+          <EditorToolDock
+            className="pointer-events-auto max-w-full overflow-x-auto"
+            activeTool={editor.state.activeTool}
+            onAction={handleBottomToolbarAction}
+          />
         </div>
       ) : null}
 
-      {isInspectorDrawerOpen ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 xl:hidden" onClick={() => setIsInspectorDrawerOpen(false)}>
-          <div
-            className="ml-auto h-full max-w-md overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900/95 p-4"
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">Inspector</h2>
-              <button
-                className="rounded-full border border-slate-600 px-3 py-1 text-sm text-slate-200"
-                type="button"
-                onClick={() => setIsInspectorDrawerOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="flex flex-col gap-4">{inspectorSections}</div>
-          </div>
-        </div>
-      ) : null}
+      <SheetDrawer
+        isOpen={isLibraryDrawerOpen}
+        title="Symbol Library"
+        align="left"
+        onClose={() => setIsLibraryDrawerOpen(false)}
+      >
+        <SymbolSearchPanel
+          query={symbolQuery}
+          symbols={visibleSymbols}
+          selectedSymbolId={selectedSymbolId}
+          onQueryChange={setSymbolQuery}
+          onSelectSymbol={setSelectedSymbolId}
+          onPlaceSymbol={handlePlaceSelectedSymbol}
+        />
+      </SheetDrawer>
+
+      <SheetDrawer
+        isOpen={isInspectorDrawerOpen}
+        title="Inspector"
+        align="right"
+        onClose={() => setIsInspectorDrawerOpen(false)}
+      >
+        <div className="flex flex-col gap-4">{inspectorSections}</div>
+      </SheetDrawer>
 
       <ContextMenu />
     </div>

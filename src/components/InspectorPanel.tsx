@@ -1,5 +1,6 @@
 import type { LibrarySymbol, SchematicProject, SymbolInstance } from "../library/types";
 import { ComponentInspector } from "./ComponentInspector";
+import { GlassPanel } from "./ui/GlassPanel";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 
 type SelectedCanvasObject =
@@ -68,7 +69,7 @@ export const InspectorPanel = ({
   const selectedSymbol = resolveSelectedSymbol(project, symbolIndex, selectedIds[0]);
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+    <GlassPanel>
       <h2 className="text-base font-semibold text-white">Inspector</h2>
 
       {selectedSymbol ? (
@@ -107,7 +108,7 @@ export const InspectorPanel = ({
           Select a symbol, wire, or label on the canvas to inspect it here.
         </p>
       )}
-    </section>
+    </GlassPanel>
   );
 };
 

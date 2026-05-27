@@ -1,6 +1,9 @@
 import { useRef } from "react";
 
 import { BundledLibraryPanel } from "./BundledLibraryPanel";
+import { BubbleButton } from "./ui/BubbleButton";
+import { GlassPanel } from "./ui/GlassPanel";
+import { glassPanelInset } from "./ui/uiStyles";
 import type { BundledLibraryPackId } from "../library/bundledLibraryCatalog";
 import type { BundledLibrarySeedProgress } from "../library/seedBundledLibraries";
 
@@ -39,7 +42,7 @@ export const ImportPanel = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+    <GlassPanel>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-white">Import Library</h3>
@@ -69,29 +72,25 @@ export const ImportPanel = ({
           onChange={(event) => onLibraryFilesSelected(event.target.files)}
         />
 
-        <button
-          className="w-full touch-manipulation rounded-2xl border border-dashed border-slate-700 px-4 py-3 text-left text-base text-slate-200 hover:border-slate-500 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-          type="button"
+        <BubbleButton
+          variant="secondary"
+          className="w-full border border-dashed border-white/20 !text-left"
           disabled={isImporting}
           onClick={() => inputRef.current?.click()}
         >
           {isImporting ? "Importing library..." : "Choose `.lib` or `.kicad_sym` files"}
-        </button>
+        </BubbleButton>
 
-        <button
-          className="w-full touch-manipulation rounded-2xl bg-slate-800 px-4 py-3 text-base font-medium text-white hover:bg-slate-700"
-          type="button"
-          onClick={onLoadStarterSymbols}
-        >
+        <BubbleButton variant="secondary" className="w-full" onClick={onLoadStarterSymbols}>
           Load Starter Symbols
-        </button>
+        </BubbleButton>
 
         <p className="text-sm text-slate-500">
           The starter library seeds resistor, capacitor, diode, op amp, connector, IC, ground, and VCC symbols.
         </p>
 
         {importStatus && importStatus.length > 0 ? (
-          <div className="max-h-48 space-y-2 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+          <div className={`max-h-48 space-y-2 overflow-y-auto p-3 ${glassPanelInset}`}>
             {importStatus.map((result) => (
               <div key={result.fileName} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-sm">
                 <p className="font-medium text-white">{result.fileName}</p>
@@ -114,7 +113,7 @@ export const ImportPanel = ({
           </div>
         ) : null}
       </div>
-    </section>
+    </GlassPanel>
   );
 };
 

@@ -46,6 +46,31 @@ const removeCollinearPoints = (points: Point[]): Point[] => {
   return nextPoints;
 };
 
+export const routeOrthogonalSegment = (draft: Point[], nextPoint: Point): Point[] => {
+  console.info("[wireRouting] Routing orthogonal wire segment", {
+    draftLength: draft.length,
+    nextPoint,
+  });
+
+  if (draft.length === 0) {
+    return [nextPoint];
+  }
+
+  const lastPoint = draft[draft.length - 1];
+  if (lastPoint.x === nextPoint.x || lastPoint.y === nextPoint.y) {
+    return normalizeWirePoints([...draft, nextPoint]);
+  }
+
+  return normalizeWirePoints([
+    ...draft,
+    {
+      x: nextPoint.x,
+      y: lastPoint.y,
+    },
+    nextPoint,
+  ]);
+};
+
 export const normalizeWirePoints = (points: Point[]): Point[] => {
   console.info("[wireRouting] Normalizing wire point list", { pointCount: points.length });
 

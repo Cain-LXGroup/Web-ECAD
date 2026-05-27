@@ -1,4 +1,5 @@
 import type { Point } from "../library/types";
+import { clientPointToWorld } from "./svgCoordinates";
 
 export const VIEWPORT_WIDTH = 5000;
 export const VIEWPORT_HEIGHT = 3500;
@@ -50,12 +51,47 @@ export const clientToWorld = (
 ): Point => {
   console.info("[canvasViewport] Converting client coordinates to world space", { clientX, clientY });
 
-  const relativeX = rect.width > 0 ? (clientX - rect.left) / rect.width : 0.5;
-  const relativeY = rect.height > 0 ? (clientY - rect.top) / rect.height : 0.5;
+  const scale =
+    viewBox.width > 0 && viewBox.height > 0
+      ? Math.min(rect.width / viewBox.width, rect.height / viewBox.height)
+      : 1;
+  const drawnWidth = viewBox.width * scale;
+  const drawnHeight = viewBox.height * scale;
+  const offsetX = (rect.width - drawnWidth) / 2;
+  const offsetY = (rect.height - drawnHeight) / 2;
 
   return {
-    x: viewBox.x + relativeX * viewBox.width,
-    y: viewBox.y + relativeY * viewBox.height,
+    x: viewBox.x + (clientX - rect.left - offsetX) / scale,
+    y: viewBox.y + (clientY - rect.top - offsetY) / scale,
+  };
+};
+
+export const getPanKeepingWorldUnderClient = (
+  anchorWorld: Point,
+  clientX: number,
+  clientY: number,
+  zoom: number,
+  rect: DOMRect,
+): Point => {
+  console.info("[canvasViewport] Calculating pan to keep world anchor under client point", {
+    clientX,
+    clientY,
+    zoom,
+  });
+
+  const viewBoxSize = getViewBox(zoom, { x: 0, y: 0 });
+  const scale =
+    viewBoxSize.width > 0 && viewBoxSize.height > 0
+      ? Math.min(rect.width / viewBoxSize.width, rect.height / viewBoxSize.height)
+      : 1;
+  const drawnWidth = viewBoxSize.width * scale;
+  const drawnHeight = viewBoxSize.height * scale;
+  const offsetX = (rect.width - drawnWidth) / 2;
+  const offsetY = (rect.height - drawnHeight) / 2;
+
+  return {
+    x: anchorWorld.x - (clientX - rect.left - offsetX) / scale,
+    y: anchorWorld.y - (clientY - rect.top - offsetY) / scale,
   };
 };
 
@@ -77,6 +113,7 @@ export const getPinchMetrics = (points: Point[]) => {
 };
 
 export const getViewportFromPinch = ({
+  svg,
   startZoom,
   startPan,
   startMidpoint,
@@ -85,6 +122,7 @@ export const getViewportFromPinch = ({
   currentDistance,
   svgRect,
 }: {
+  svg: SVGSVGElement;
   startZoom: number;
   startPan: Point;
   startMidpoint: Point;
@@ -99,22 +137,22 @@ export const getViewportFromPinch = ({
     currentDistance,
   });
 
-  const startViewBox = getViewBox(startZoom, startPan);
-  const anchorWorld = clientToWorld(startMidpoint.x, startMidpoint.y, svgRect, startViewBox);
+  const anchorWorld = clientPointToWorld(svg, startMidpoint.x, startMidpoint.y);
+  if (!anchorWorld) {
+    return { pan: startPan, zoom: startZoom };
+  }
+
   const distanceRatio = startDistance > 0 ? currentDistance / startDistance : 1;
   const nextZoom = clampZoom(startZoom * distanceRatio);
-  const nextViewBox = getViewBox(nextZoom, startPan);
 
   return {
     zoom: nextZoom,
-    pan: {
-      x: anchorWorld.x - ((currentMidpoint.x - svgRect.left) / Math.max(svgRect.width, 1)) * nextViewBox.width,
-      y: anchorWorld.y - ((currentMidpoint.y - svgRect.top) / Math.max(svgRect.height, 1)) * nextViewBox.height,
-    },
+    pan: getPanKeepingWorldUnderClient(anchorWorld, currentMidpoint.x, currentMidpoint.y, nextZoom, svgRect),
   };
 };
 
 export const getZoomAtClientPoint = (
+  svg: SVGSVGElement,
   clientX: number,
   clientY: number,
   currentZoom: number,
@@ -129,16 +167,15 @@ export const getZoomAtClientPoint = (
     zoomFactor,
   });
 
-  const currentViewBox = getViewBox(currentZoom, currentPan);
-  const anchorWorld = clientToWorld(clientX, clientY, svgRect, currentViewBox);
+  const anchorWorld = clientPointToWorld(svg, clientX, clientY);
+  if (!anchorWorld) {
+    return { pan: currentPan, zoom: currentZoom };
+  }
+
   const nextZoom = clampZoom(currentZoom * zoomFactor);
-  const nextViewBox = getViewBox(nextZoom, currentPan);
 
   return {
     zoom: nextZoom,
-    pan: {
-      x: anchorWorld.x - ((clientX - svgRect.left) / Math.max(svgRect.width, 1)) * nextViewBox.width,
-      y: anchorWorld.y - ((clientY - svgRect.top) / Math.max(svgRect.height, 1)) * nextViewBox.height,
-    },
+    pan: getPanKeepingWorldUnderClient(anchorWorld, clientX, clientY, nextZoom, svgRect),
   };
 };

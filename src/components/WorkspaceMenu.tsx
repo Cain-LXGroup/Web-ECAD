@@ -1,10 +1,13 @@
 import { type PropsWithChildren, useEffect, useRef, useState } from "react";
 
+import { BubbleButton } from "./ui/BubbleButton";
+import { glassPanel } from "./ui/uiStyles";
+
 type WorkspaceMenuProps = PropsWithChildren<{
   label?: string;
 }>;
 
-export const WorkspaceMenu = ({ label = "Workspace Menu", children }: WorkspaceMenuProps) => {
+export const WorkspaceMenu = ({ label = "Workspace", children }: WorkspaceMenuProps) => {
   console.info("[WorkspaceMenu] Rendering workspace dropdown menu", { label });
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -39,24 +42,22 @@ export const WorkspaceMenu = ({ label = "Workspace Menu", children }: WorkspaceM
 
   return (
     <div ref={containerRef} className="relative z-[60]">
-      <button
-        className={`touch-manipulation rounded-2xl border px-4 py-3 text-base font-medium transition-colors ${
-          isOpen
-            ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-            : "border-slate-700 bg-slate-800 text-white hover:bg-slate-700"
-        }`}
-        type="button"
+      <BubbleButton
+        variant={isOpen ? "primary" : "secondary"}
+        className="!py-2.5"
         onClick={() => {
           console.info("[WorkspaceMenu] Toggling workspace dropdown", { nextOpen: !isOpen });
           setIsOpen((currentOpen) => !currentOpen);
         }}
       >
         {label}
-      </button>
+      </BubbleButton>
 
       {isOpen ? (
-        <div className="absolute right-0 top-full z-[70] mt-3 w-[min(28rem,calc(100vw-2rem))] rounded-[2rem] border border-slate-800 bg-slate-950/95 p-3 shadow-2xl shadow-slate-950/70 backdrop-blur">
-          <div className="max-h-[70svh] space-y-3 overflow-y-auto pr-1">{children}</div>
+        <div
+          className={`absolute right-0 top-full z-[70] mt-2 w-[min(28rem,calc(100vw-1.5rem))] p-3 ${glassPanel}`}
+        >
+          <div className="max-h-[70svh] space-y-3 overflow-y-auto overscroll-contain pr-1">{children}</div>
         </div>
       ) : null}
     </div>

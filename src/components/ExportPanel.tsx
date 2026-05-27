@@ -1,21 +1,49 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+
+import { BubbleButton } from "./ui/BubbleButton";
+import { GlassPanel } from "./ui/GlassPanel";
+import { glassPanelInset } from "./ui/uiStyles";
 
 type ExportPanelProps = {
   onExportBackup: () => void;
   onImportBackup: (file: File) => void;
+  onExportProjectJson: () => void;
+  onExportSvg: () => void;
+  onExportPng: () => void;
+  onExportPdf: () => void;
 };
 
-export const ExportPanel = ({ onExportBackup, onImportBackup }: ExportPanelProps) => {
-  console.info("[ExportPanel] Rendering backup panel");
+export const ExportPanel = ({
+  onExportBackup,
+  onImportBackup,
+  onExportProjectJson,
+  onExportSvg,
+  onExportPng,
+  onExportPdf,
+}: ExportPanelProps) => {
+  console.info("[ExportPanel] Rendering export panel");
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const runExport = async (label: string, action: () => void | Promise<void>) => {
+    console.info("[ExportPanel] Running export action", { label });
+
+    setIsExporting(true);
+
+    try {
+      await action();
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+    <GlassPanel>
       <div className="mb-3">
-        <h3 className="text-base font-semibold text-white">Backup</h3>
+        <h3 className="text-base font-semibold text-white">Export</h3>
         <p className="mt-1 text-sm text-slate-400">
-          Export or restore local IndexedDB content to protect against browser storage resets.
+          Export the current view, project file, or a full local backup of symbols and projects.
         </p>
       </div>
 
@@ -33,25 +61,75 @@ export const ExportPanel = ({ onExportBackup, onImportBackup }: ExportPanelProps
       />
 
       <div className="grid gap-3">
-        <button
-          className="w-full touch-manipulation rounded-2xl bg-cyan-500 px-4 py-3 text-base font-semibold text-slate-950 hover:bg-cyan-400"
-          type="button"
-          onClick={onExportBackup}
+        <p className={`text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 ${glassPanelInset} px-3 py-2`}>
+          Current schematic
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <BubbleButton
+            variant="primary"
+            className="w-full !py-2.5 text-sm"
+            disabled={isExporting}
+            onClick={() => {
+              void runExport("svg", onExportSvg);
+            }}
+          >
+            SVG
+          </BubbleButton>
+          <BubbleButton
+            variant="primary"
+            className="w-full !py-2.5 text-sm"
+            disabled={isExporting}
+            onClick={() => {
+              void runExport("png", onExportPng);
+            }}
+          >
+            PNG
+          </BubbleButton>
+          <BubbleButton
+            variant="secondary"
+            className="w-full !py-2.5 text-sm"
+            disabled={isExporting}
+            onClick={() => {
+              void runExport("pdf", onExportPdf);
+            }}
+          >
+            PDF
+          </BubbleButton>
+          <BubbleButton
+            variant="secondary"
+            className="w-full !py-2.5 text-sm"
+            disabled={isExporting}
+            onClick={() => {
+              void runExport("json", onExportProjectJson);
+            }}
+          >
+            Project JSON
+          </BubbleButton>
+        </div>
+
+        <p className={`text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 ${glassPanelInset} px-3 py-2`}>
+          Full backup
+        </p>
+        <BubbleButton
+          variant="primary"
+          className="w-full"
+          disabled={isExporting}
+          onClick={() => {
+            void runExport("backup", onExportBackup);
+          }}
         >
           Export Backup
-        </button>
-        <button
-          className="w-full touch-manipulation rounded-2xl bg-slate-800 px-4 py-3 text-base font-medium text-white hover:bg-slate-700"
-          type="button"
+        </BubbleButton>
+        <BubbleButton
+          variant="secondary"
+          className="w-full"
+          disabled={isExporting}
           onClick={() => importInputRef.current?.click()}
         >
           Import Backup
-        </button>
-        <div className="rounded-2xl border border-dashed border-slate-700 px-4 py-3 text-sm text-slate-500">
-          SVG, PNG, PDF, and project JSON export arrive in a later milestone.
-        </div>
+        </BubbleButton>
       </div>
-    </section>
+    </GlassPanel>
   );
 };
 

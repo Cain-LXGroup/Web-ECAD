@@ -1,12 +1,14 @@
 import {
+  forwardRef,
   type Dispatch,
   type PointerEvent as ReactPointerEvent,
   type SetStateAction,
-  type WheelEvent as ReactWheelEvent,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 
 import type { LibrarySymbol, Point, SchematicProject } from "../library/types";
@@ -18,13 +20,12 @@ import { getWireJunctionPoints } from "./wireRouting";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 import { WireView } from "./WireView";
 import {
-  clientToWorld,
-  getClientToWorldScale,
   getPinchMetrics,
   getViewBox,
   getViewportFromPinch,
   getZoomAtClientPoint,
 } from "./canvasViewport";
+import { clientDeltaToWorldDelta, clientPointToWorld } from "./svgCoordinates";
 
 type DragState = {
   pointerId: number;
@@ -41,6 +42,10 @@ type PinchGestureState = {
   startPan: Point;
 };
 
+export type SchematicCanvasHandle = {
+  getSvgElement: () => SVGSVGElement | null;
+};
+
 type SchematicCanvasProps = {
   project: SchematicProject;
   symbolIndex: Record<string, LibrarySymbol>;
@@ -48,6 +53,7 @@ type SchematicCanvasProps = {
   activeTool: Tool;
   placingSymbolId?: string;
   wireDraft?: WireDraftState;
+  getWirePreviewPoints?: (point: Point) => Point[] | undefined;
   zoom: number;
   pan: Point;
   onSelectObject: (id: string) => void;
@@ -92,27 +98,31 @@ const shouldCapturePointer = (event: ReactPointerEvent<SVGElement>): boolean => 
   return event.pointerType === "touch" || event.pointerType === "pen";
 };
 
-export const SchematicCanvas = ({
-  project,
-  symbolIndex,
-  selectedIds,
-  activeTool,
-  placingSymbolId,
-  wireDraft,
-  zoom,
-  pan,
-  onSelectObject,
-  onClearSelection,
-  onMoveSelected,
-  onSnapSelectedToGrid,
-  onPlaceSymbol,
-  onStartWire,
-  onAddWirePoint,
-  onAddNetLabel,
-  onAddTextNote,
-  onSetPan,
-  onSetZoom,
-}: SchematicCanvasProps) => {
+export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvasProps>(function SchematicCanvas(
+  {
+    project,
+    symbolIndex,
+    selectedIds,
+    activeTool,
+    placingSymbolId,
+    wireDraft,
+    getWirePreviewPoints,
+    zoom,
+    pan,
+    onSelectObject,
+    onClearSelection,
+    onMoveSelected,
+    onSnapSelectedToGrid,
+    onPlaceSymbol,
+    onStartWire,
+    onAddWirePoint,
+    onAddNetLabel,
+    onAddTextNote,
+    onSetPan,
+    onSetZoom,
+  },
+  ref,
+) {
   console.info("[SchematicCanvas] Rendering interactive schematic canvas", {
     projectId: project.id,
     activeTool,
@@ -125,8 +135,13 @@ export const SchematicCanvas = ({
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [wireHoverPoint, setWireHoverPoint] = useState<Point | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const gridSize = project.gridSize ?? DEFAULT_GRID_SIZE;
+
+  useImperativeHandle(ref, () => ({
+    getSvgElement: () => svgRef.current,
+  }));
 
   useEffect(() => {
     dragStateRef.current = dragState;
@@ -145,8 +160,7 @@ export const SchematicCanvas = ({
       return null;
     }
 
-    const rect = svg.getBoundingClientRect();
-    return clientToWorld(clientX, clientY, rect, viewBox);
+    return clientPointToWorld(svg, clientX, clientY);
   };
 
   const getCanvasPoint = (event: ReactPointerEvent<SVGElement>): Point | null => {
@@ -213,11 +227,13 @@ export const SchematicCanvas = ({
     }
 
     const metrics = getPinchMetrics(pointerPoints);
-    if (!metrics) {
+    const svg = svgRef.current;
+    if (!metrics || !svg) {
       return;
     }
 
     const nextViewport = getViewportFromPinch({
+      svg,
       startZoom: gesture.startZoom,
       startPan: gesture.startPan,
       startMidpoint: gesture.startMidpoint,
@@ -365,18 +381,21 @@ export const SchematicCanvas = ({
       return;
     }
 
+    if (activeTool === "wire" && wireDraft && wireDraft.points.length > 0 && getWirePreviewPoints) {
+      const hoverPoint = getCanvasPoint(event);
+      setWireHoverPoint(hoverPoint);
+    } else if (wireHoverPoint) {
+      setWireHoverPoint(null);
+    }
+
     if (!dragState || dragState.pointerId !== event.pointerId) {
       return;
     }
 
-    const svgRect = getSvgRect();
-    if (!svgRect) {
+    const svg = svgRef.current;
+    if (!svg) {
       return;
     }
-
-    const clientScale = getClientToWorldScale(viewBox, svgRect.width, svgRect.height);
-    const dxClient = event.clientX - dragState.lastClient.x;
-    const dyClient = event.clientY - dragState.lastClient.y;
 
     if (dragState.mode === "move-selection") {
       const canvasPoint = getCanvasPoint(event);
@@ -398,9 +417,21 @@ export const SchematicCanvas = ({
     }
 
     if (dragState.mode === "pan") {
+      const worldDelta = clientDeltaToWorldDelta(
+        svg,
+        dragState.lastClient.x,
+        dragState.lastClient.y,
+        event.clientX,
+        event.clientY,
+      );
+
+      if (!worldDelta) {
+        return;
+      }
+
       onSetPan((currentPan) => ({
-        x: currentPan.x - dxClient * clientScale.x,
-        y: currentPan.y - dyClient * clientScale.y,
+        x: currentPan.x - worldDelta.x,
+        y: currentPan.y - worldDelta.y,
       }));
       setDragState((currentDragState) =>
         currentDragState
@@ -445,13 +476,15 @@ export const SchematicCanvas = ({
 
     event.preventDefault();
 
+    const svg = svgRef.current;
     const svgRect = getSvgRect();
-    if (!svgRect) {
+    if (!svg || !svgRect) {
       return;
     }
 
     const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
     const nextViewport = getZoomAtClientPoint(
+      svg,
       event.clientX,
       event.clientY,
       zoom,
@@ -492,6 +525,19 @@ export const SchematicCanvas = ({
 
   const draftWire =
     wireDraft && wireDraft.points.length > 1 ? { id: "wire-draft", points: wireDraft.points } : undefined;
+
+  const wirePreviewWire = useMemo(() => {
+    if (!wireDraft || wireDraft.points.length === 0 || !wireHoverPoint || !getWirePreviewPoints) {
+      return undefined;
+    }
+
+    const previewPoints = getWirePreviewPoints(wireHoverPoint);
+    if (!previewPoints || previewPoints.length < 2) {
+      return undefined;
+    }
+
+    return { id: "wire-preview", points: previewPoints };
+  }, [getWirePreviewPoints, wireDraft, wireHoverPoint]);
 
   const selectedSymbolName = placingSymbolId ? symbolIndex[placingSymbolId]?.name : undefined;
   const isCanvasEmpty =
@@ -536,6 +582,9 @@ export const SchematicCanvas = ({
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={handleCanvasPointerUp}
         onPointerCancel={handleCanvasPointerUp}
+        onPointerLeave={() => {
+          setWireHoverPoint(null);
+        }}
         onWheel={handleWheel}
       >
         <defs>
@@ -581,6 +630,7 @@ export const SchematicCanvas = ({
         ))}
 
         {draftWire ? <WireView wire={draftWire} dashed /> : null}
+        {wirePreviewWire ? <WireView wire={wirePreviewWire} dashed /> : null}
 
         {project.netLabels.map((label) => (
           <LabelView
@@ -639,6 +689,6 @@ export const SchematicCanvas = ({
       ) : null}
     </section>
   );
-};
+});
 
 export default SchematicCanvas;

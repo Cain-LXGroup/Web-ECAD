@@ -14,6 +14,7 @@ import {
   findNearestWireConnection,
   findNearestWireSegmentPoint,
   normalizeWirePoints,
+  routeOrthogonalSegment,
 } from "./wireRouting";
 import { DEFAULT_GRID_SIZE, snapPoint } from "./snapping";
 import { normalizeRotation, toggleMirror } from "./transforms";
@@ -41,31 +42,6 @@ export type EditorState = {
 };
 
 const PIN_CONNECTION_TOLERANCE = 36;
-
-const routeOrthogonalSegment = (draft: Point[], nextPoint: Point): Point[] => {
-  console.info("[useEditorState] Routing orthogonal wire segment", {
-    draftLength: draft.length,
-    nextPoint,
-  });
-
-  if (draft.length === 0) {
-    return [nextPoint];
-  }
-
-  const lastPoint = draft[draft.length - 1];
-  if (lastPoint.x === nextPoint.x || lastPoint.y === nextPoint.y) {
-    return normalizeWirePoints([...draft, nextPoint]);
-  }
-
-  return normalizeWirePoints([
-    ...draft,
-    {
-      x: nextPoint.x,
-      y: lastPoint.y,
-    },
-    nextPoint,
-  ]);
-};
 
 const getNextReference = (project: SchematicProject, referencePrefix: string): string => {
   console.info("[useEditorState] Calculating next reference designator", {
@@ -467,6 +443,21 @@ export const useEditorState = (
     cancelWire: () => {
       console.info("[useEditorState] Cancelling wire draft");
       setWireDraft(undefined);
+    },
+    getWirePreviewPoints: (point: Point): Point[] | undefined => {
+      console.info("[useEditorState] Building wire preview points", { point });
+
+      if (!wireDraft || wireDraft.points.length === 0) {
+        return undefined;
+      }
+
+      const nextAnchor = resolveWireAnchor(point, project);
+
+      if (wireDraft.routingMode === "auto") {
+        return buildAutoRoute(wireDraft.points[0], nextAnchor.point);
+      }
+
+      return routeOrthogonalSegment(wireDraft.points, nextAnchor.point);
     },
     addNetLabel: (text: string, point: Point) => {
       console.info("[useEditorState] Adding net label", { text, point });

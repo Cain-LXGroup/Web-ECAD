@@ -1,5 +1,7 @@
 import type { LibrarySymbol } from "../library/types";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
+import { BubbleButton } from "./ui/BubbleButton";
+import { glassPanelInset } from "./ui/uiStyles";
 
 type SymbolSearchPanelProps = {
   query: string;
@@ -40,13 +42,7 @@ export const SymbolSearchPanel = ({
   });
 
   return (
-    <section
-      className="flex min-h-0 flex-1 flex-col rounded-2xl border p-4"
-      style={{
-        borderColor: "rgba(192, 112, 112, 0.28)",
-        backgroundColor: "#171a21",
-      }}
-    >
+    <section className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="mb-3">
         <h3 className="text-base font-semibold text-white">Symbol Library</h3>
         <p className="mt-1 text-sm text-slate-400">
@@ -57,7 +53,7 @@ export const SymbolSearchPanel = ({
       <label className="mb-3 block">
         <span className="mb-2 block text-sm font-medium text-slate-300">Search</span>
         <input
-          className="w-full rounded-2xl border border-slate-700 bg-[#202228] px-4 py-3 text-base text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400"
+          className={`w-full px-4 py-3 text-base text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400/60 ${glassPanelInset}`}
           placeholder="TPS5430, LM741, C12345..."
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
@@ -120,14 +116,14 @@ export const SymbolSearchPanel = ({
                     </button>
 
                     {selected ? (
-                      <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3">
-                        <button
-                          className="w-full touch-manipulation rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950"
-                          type="button"
+                      <div className={`mt-3 p-3 ${glassPanelInset}`}>
+                        <BubbleButton
+                          variant="primary"
+                          className="w-full"
                           onClick={() => onPlaceSymbol(symbol.id)}
                         >
                           Place {valueLabel}
-                        </button>
+                        </BubbleButton>
                         <dl className="mt-3 grid gap-2 text-xs text-slate-300">
                           <div>
                             <dt className="text-slate-500">Library</dt>

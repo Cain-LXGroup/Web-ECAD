@@ -1,6 +1,9 @@
 import type { BundledLibraryPackId } from "../library/bundledLibraryCatalog";
 import { bundledLibraryPacks } from "../library/bundledLibraryCatalog";
 import type { BundledLibrarySeedProgress } from "../library/seedBundledLibraries";
+import { BubbleButton } from "./ui/BubbleButton";
+import { GlassPanel } from "./ui/GlassPanel";
+import { glassPanelInset } from "./ui/uiStyles";
 
 type BundledLibraryPanelProps = {
   installedPacks: Partial<Record<BundledLibraryPackId, boolean>>;
@@ -21,7 +24,7 @@ export const BundledLibraryPanel = ({
   });
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+    <GlassPanel>
       <div className="mb-3">
         <h3 className="text-base font-semibold text-white">Standard Libraries</h3>
         <p className="mt-1 text-sm text-slate-400">
@@ -39,7 +42,7 @@ export const BundledLibraryPanel = ({
               : 0;
 
           return (
-            <article key={pack.id} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+            <article key={pack.id} className={`p-4 ${glassPanelInset}`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-semibold text-white">{pack.label}</h4>
@@ -79,19 +82,19 @@ export const BundledLibraryPanel = ({
                 </div>
               ) : null}
 
-              <button
-                className="mt-3 w-full touch-manipulation rounded-2xl bg-cyan-500 px-4 py-3 text-base font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-                type="button"
+              <BubbleButton
+                variant="primary"
+                className="mt-3 w-full"
                 disabled={Boolean(isActive) || installed}
                 onClick={() => onInstallPack(pack.id)}
               >
                 {installed ? "Already Installed" : isActive ? "Installing..." : `Install ${pack.label}`}
-              </button>
+              </BubbleButton>
             </article>
           );
         })}
       </div>
-    </section>
+    </GlassPanel>
   );
 };
 
