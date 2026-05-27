@@ -144,13 +144,6 @@ function App() {
     [editor.state.project, editor.state.selectedIds, symbolIndex],
   );
 
-  const workspaceStatus =
-    autoSaveState === "saving"
-      ? "Auto-saving…"
-      : autoSaveState === "saved"
-        ? "All changes saved"
-        : statusMessage;
-
   useEffect(() => {
     console.info("[App] Scheduling debounced auto-save", { projectId: editor.state.project.id });
 
@@ -236,6 +229,15 @@ function App() {
     [activeProjectId, projects],
   );
   const selectedLibrarySymbol = selectedSymbolId ? symbolIndex[selectedSymbolId] : undefined;
+  const favoriteSymbols = useMemo(
+    () => allSymbols.filter((symbol) => appSettings.starredSymbolIds.includes(symbol.id)),
+    [allSymbols, appSettings.starredSymbolIds],
+  );
+  const librarySymbolsForPanel = useMemo(() => {
+    const favoriteIds = new Set(appSettings.starredSymbolIds);
+    return visibleSymbols.filter((symbol) => !favoriteIds.has(symbol.id));
+  }, [appSettings.starredSymbolIds, visibleSymbols]);
+  const projectSheets = editor.state.project.sheets ?? [];
   const selectedCanvasObject = useMemo(() => {
     console.info("[App] Resolving selected canvas object for inspector", {
       selectedIds: editor.state.selectedIds,
@@ -612,6 +614,7 @@ function App() {
       setActiveProjectId(projectId);
 
       if (nextProject) {
+        autoSaveSkipRef.current = true;
         setEditorSeedProject(nextProject);
         editor.loadProject(nextProject);
         setStatusMessage(`Loaded "${nextProject.name}".`);
@@ -737,6 +740,34 @@ function App() {
               : "Choose a library symbol, then tap Place."}
         </p>
       </GlassPanel>
+
+      {editor.state.activeTool === "label" ? (
+        <GlassPanel>
+          <h2 className="text-base font-semibold text-white">Net Label Scope</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            Global labels connect across sheets; sheet labels stay on this sheet only.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {(["sheet", "global"] as const).map((scope) => (
+              <BubbleButton
+                key={scope}
+                variant={editor.state.labelPlacementScope === scope ? "primary" : "secondary"}
+                className="w-full !py-2.5 text-sm"
+                onClick={() => {
+                  editor.setLabelPlacementScope(scope);
+                  setStatusMessage(
+                    scope === "global"
+                      ? "Placing global net labels (⬡)."
+                      : "Placing sheet-local net labels (▫).",
+                  );
+                }}
+              >
+                {scope === "global" ? "Global ⬡" : "Sheet ▫"}
+              </BubbleButton>
+            ))}
+          </div>
+        </GlassPanel>
+      ) : null}
 
       <GlassPanel>
         <h2 className="text-base font-semibold text-white">Wire Routing</h2>
@@ -893,11 +924,14 @@ function App() {
           <Sidebar title="Symbol Library">
             <SymbolSearchPanel
               query={symbolQuery}
-              symbols={visibleSymbols}
+              symbols={librarySymbolsForPanel}
+              favoriteSymbols={favoriteSymbols}
+              starredSymbolIds={appSettings.starredSymbolIds}
               selectedSymbolId={selectedSymbolId}
               onQueryChange={setSymbolQuery}
               onSelectSymbol={setSelectedSymbolId}
               onPlaceSymbol={handlePlaceSelectedSymbol}
+              onToggleStar={appSettings.toggleStarredSymbol}
             />
           </Sidebar>
         </div>
@@ -907,7 +941,7 @@ function App() {
             <WorkspaceMenu
               label="Menu"
               projectName={editor.state.project.name}
-              statusMessage={workspaceStatus}
+              statusMessage={statusMessage}
               onSaveProject={() => {
                 void handleSaveProject();
               }}
@@ -936,6 +970,41 @@ function App() {
             label="Fit"
             onClick={handleFitView}
           />
+          <div className="pointer-events-auto flex max-w-[min(52vw,28rem)] flex-wrap items-center gap-1 rounded-full border border-[var(--chrome-border)] bg-[var(--chrome-panel)] px-2 py-1 shadow-[var(--chrome-shadow)] backdrop-blur-xl">
+            {projectSheets.map((sheet) => (
+              <button
+                key={sheet.id}
+                type="button"
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold touch-manipulation ${
+                  sheet.id === editor.state.activeSheetId
+                    ? "bg-cyan-500/25 text-cyan-100"
+                    : "text-slate-300 hover:bg-white/10"
+                }`}
+                onClick={() => {
+                  editor.setActiveSheet(sheet.id);
+                  setStatusMessage(`Switched to ${sheet.name}.`);
+                }}
+              >
+                {sheet.name}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="rounded-full px-2 py-1.5 text-lg leading-none text-slate-300 hover:bg-white/10 touch-manipulation"
+              aria-label="Add sheet"
+              onClick={() => {
+                editor.addSheet();
+                setStatusMessage("Added a new schematic sheet.");
+              }}
+            >
+              +
+            </button>
+          </div>
+          {autoSaveState !== "idle" ? (
+            <span className="pointer-events-none self-center rounded-full border border-[var(--chrome-border)] bg-[var(--chrome-panel)] px-3 py-2 text-xs font-medium text-[var(--chrome-muted)] shadow-[var(--chrome-shadow)] backdrop-blur-xl">
+              {autoSaveState === "saving" ? "Saving…" : "Saved"}
+            </span>
+          ) : null}
           <span
             className="pointer-events-none self-center rounded-full border border-[var(--chrome-border)] bg-[var(--chrome-panel)] px-3 py-2 font-mono text-xs font-semibold text-[var(--chrome-muted)] shadow-[var(--chrome-shadow)] backdrop-blur-xl"
             title="Build version"
@@ -1054,11 +1123,14 @@ function App() {
       >
         <SymbolSearchPanel
           query={symbolQuery}
-          symbols={visibleSymbols}
+          symbols={librarySymbolsForPanel}
+          favoriteSymbols={favoriteSymbols}
+          starredSymbolIds={appSettings.starredSymbolIds}
           selectedSymbolId={selectedSymbolId}
           onQueryChange={setSymbolQuery}
           onSelectSymbol={setSelectedSymbolId}
           onPlaceSymbol={handlePlaceSelectedSymbol}
+          onToggleStar={appSettings.toggleStarredSymbol}
         />
       </SheetDrawer>
 
