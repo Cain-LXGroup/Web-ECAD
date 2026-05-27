@@ -21,6 +21,7 @@ export type AutoRouteContext = {
   project: SchematicProject;
   symbolIndex: Record<string, LibrarySymbol>;
   gridSize: number;
+  routeClearancePx?: number;
   startConnection?: WireConnection;
   endConnection?: WireConnection;
 };
@@ -102,13 +103,16 @@ export const collectSymbolObstacles = (
   project: SchematicProject,
   symbolIndex: Record<string, LibrarySymbol>,
   gridSize: number,
+  routeClearancePx?: number,
 ): ObstacleRect[] => {
   console.info("[wireObstacleRoute] Collecting symbol obstacles for auto-routing", {
     symbolCount: project.symbols.length,
     gridSize,
+    routeClearancePx,
   });
 
-  const clearance = Math.max(MIN_CLEARANCE, gridSize * DEFAULT_CLEARANCE_MULTIPLIER);
+  const clearance =
+    routeClearancePx ?? Math.max(MIN_CLEARANCE, gridSize * DEFAULT_CLEARANCE_MULTIPLIER);
 
   return project.symbols.flatMap((instance) => {
     const symbol = symbolIndex[instance.symbolId];
@@ -533,7 +537,12 @@ export const buildObstacleAwareAutoRoute = (
     symbolCount: context.project.symbols.length,
   });
 
-  const obstacles = collectSymbolObstacles(context.project, context.symbolIndex, context.gridSize);
+  const obstacles = collectSymbolObstacles(
+    context.project,
+    context.symbolIndex,
+    context.gridSize,
+    context.routeClearancePx,
+  );
   const segmentOptions: SegmentObstacleOptions = {
     allowedBoundaryCrossingInstanceIds: getBoundaryCrossingInstanceIds(context),
   };

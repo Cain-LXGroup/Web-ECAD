@@ -506,7 +506,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       lastWorld: canvasPoint,
       startClient: { x: event.clientX, y: event.clientY },
       originWorld: canvasPoint,
-      isPanning: activeTool === "pan",
+      isPanning: false,
       tapAction,
     });
   };
@@ -560,11 +560,6 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
     if (activeTool === "text") {
       beginCanvasGesture(event, canvasPoint, { kind: "text" });
-      return;
-    }
-
-    if (activeTool === "pan") {
-      beginCanvasGesture(event, canvasPoint);
       return;
     }
 

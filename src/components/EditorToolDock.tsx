@@ -1,4 +1,5 @@
 import { bottomToolbarActions, type BottomToolbarAction } from "../app/routes";
+import type { ColorScheme } from "../hooks/useAppSettings";
 import { KicadToolIcon, getKicadToolLabel } from "./icons/KicadToolIcon";
 import { glassDock, iconToolButtonActive, iconToolButtonIdle } from "./ui/uiStyles";
 
@@ -7,6 +8,7 @@ type EditorToolDockProps = {
   onAction: (actionId: BottomToolbarAction) => void;
   className?: string;
   orientation?: "horizontal" | "vertical";
+  theme?: ColorScheme;
 };
 
 const isToolbarAction = (tool: string): tool is BottomToolbarAction => {
@@ -18,6 +20,7 @@ export const EditorToolDock = ({
   onAction,
   className = "",
   orientation = "horizontal",
+  theme = "dark",
 }: EditorToolDockProps) => {
   console.info("[EditorToolDock] Rendering editor tool dock", { activeTool, orientation });
 
@@ -41,7 +44,7 @@ export const EditorToolDock = ({
             title={label}
             onClick={() => onAction(action.id)}
           >
-            <KicadToolIcon tool={action.id} size={26} />
+            <KicadToolIcon tool={action.id} size={26} theme={theme} />
           </button>
         );
       })}

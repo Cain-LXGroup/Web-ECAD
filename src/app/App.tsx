@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
-import { bottomToolbarActions } from "./routes";
+import type { BottomToolbarAction } from "./routes";
+import { APP_DISPLAY_VERSION } from "./version";
 import { CanvasContextMenu, type CanvasContextMenuTarget } from "../components/CanvasContextMenu";
+import { EditorContextRail } from "../components/EditorContextRail";
 import { EditorSettingsPanel } from "../components/EditorSettingsPanel";
-import { ToolActionPalette } from "../components/ToolActionPalette";
-import { UndoRedoButtons } from "../components/UndoRedoButtons";
+import { UndoRedoRail } from "../components/UndoRedoRail";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ExportPanel } from "../components/ExportPanel";
 import { ImportPanel, type ImportPanelStatus } from "../components/ImportPanel";
@@ -103,7 +104,9 @@ function App() {
     [allSymbols],
   );
 
-  const editor = useEditorState(editorSeedProject, symbolIndex);
+  const editor = useEditorState(editorSeedProject, symbolIndex, {
+    wireRouteClearance: appSettings.wireRouteClearance,
+  });
 
   const getCanvasSvg = useCallback(() => {
     console.info("[App] Resolving schematic canvas SVG for export");
@@ -554,32 +557,76 @@ function App() {
   );
 
   const handleBottomToolbarAction = useCallback(
-    (actionId: (typeof bottomToolbarActions)[number]["id"]) => {
+    (actionId: BottomToolbarAction) => {
       console.info("[App] Handling bottom toolbar action", { actionId });
-
-      if (actionId === "rotate") {
-        editor.rotateSelected();
-        setStatusMessage("Rotated the selected symbol.");
-        return;
-      }
-
-      if (actionId === "mirror") {
-        editor.mirrorSelected();
-        setStatusMessage("Mirrored the selected symbol.");
-        return;
-      }
-
-      if (actionId === "delete") {
-        editor.deleteSelected();
-        setStatusMessage("Deleted the selected object.");
-        return;
-      }
 
       editor.setTool(actionId);
       setStatusMessage(`Switched to ${actionId} tool.`);
     },
     [editor],
   );
+
+  const hasSymbolSelection = useMemo(
+    () =>
+      editor.state.selectedIds.some((selectedId) =>
+        editor.state.project.symbols.some((symbol) => symbol.id === selectedId),
+      ),
+    [editor.state.project.symbols, editor.state.selectedIds],
+  );
+
+  const selectContextActions = useMemo(() => {
+    if (editor.state.activeTool !== "select" || editor.state.selectedIds.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        id: "rotate",
+        icon: "rotate" as const,
+        label: "Rotate",
+        disabled: !hasSymbolSelection,
+        onClick: () => {
+          editor.rotateSelected();
+          setStatusMessage("Rotated the selected symbol.");
+        },
+      },
+      {
+        id: "mirror",
+        icon: "mirror" as const,
+        label: "Mirror",
+        disabled: !hasSymbolSelection,
+        onClick: () => {
+          editor.mirrorSelected();
+          setStatusMessage("Mirrored the selected symbol.");
+        },
+      },
+      {
+        id: "zoom-selection",
+        icon: "zoom" as const,
+        label: "Zoom to selection",
+        variant: "primary" as const,
+        onClick: () => {
+          editor.fitToSelection(symbolIndex);
+          setStatusMessage("Zoomed to the current selection.");
+        },
+      },
+      {
+        id: "delete",
+        icon: "delete" as const,
+        label: "Delete",
+        onClick: () => {
+          editor.deleteSelected();
+          setStatusMessage("Deleted the selected object.");
+        },
+      },
+    ];
+  }, [
+    editor,
+    editor.state.activeTool,
+    editor.state.selectedIds.length,
+    hasSymbolSelection,
+    symbolIndex,
+  ]);
 
   const handleWireRoutingModeChange = useCallback(
     (nextWireRoutingMode: "manual" | "auto") => {
@@ -735,8 +782,12 @@ function App() {
       <EditorSettingsPanel
         fingerPansOnly={appSettings.fingerPansOnly}
         soundEnabled={appSettings.soundEnabled}
+        wireRouteClearance={appSettings.wireRouteClearance}
+        colorScheme={appSettings.colorScheme}
         onFingerPansOnlyChange={appSettings.setFingerPansOnly}
         onSoundEnabledChange={appSettings.setSoundEnabled}
+        onWireRouteClearanceChange={appSettings.setWireRouteClearance}
+        onColorSchemeChange={appSettings.setColorScheme}
       />
       <ExportPanel
         onExportBackup={() => {
@@ -807,78 +858,15 @@ function App() {
             label="Fit"
             onClick={handleFitView}
           />
+          <span
+            className="pointer-events-none self-center rounded-full border border-[var(--chrome-border)] bg-[var(--chrome-panel)] px-3 py-2 font-mono text-xs font-semibold text-[var(--chrome-muted)] shadow-[var(--chrome-shadow)] backdrop-blur-xl"
+            title="Build version"
+          >
+            {APP_DISPLAY_VERSION}
+          </span>
         </div>
 
         <div className="relative flex min-h-0 flex-col gap-4">
-          {!isFloatingChromeHidden && editor.state.activeTool === "select" && editor.state.selectedIds.length > 0 ? (
-            <ToolActionPalette
-              ariaLabel="Selection actions"
-              actions={[
-                {
-                  id: "rotate",
-                  label: "Rotate",
-                  onClick: () => {
-                    editor.rotateSelected();
-                    setStatusMessage("Rotated the selected symbol.");
-                  },
-                },
-                {
-                  id: "mirror",
-                  label: "Mirror",
-                  onClick: () => {
-                    editor.mirrorSelected();
-                    setStatusMessage("Mirrored the selected symbol.");
-                  },
-                },
-                {
-                  id: "zoom-selection",
-                  label: "Zoom Here",
-                  variant: "primary",
-                  onClick: () => {
-                    editor.fitToSelection(symbolIndex);
-                    setStatusMessage("Zoomed to the current selection.");
-                  },
-                },
-                {
-                  id: "delete",
-                  label: "Delete",
-                  onClick: () => {
-                    editor.deleteSelected();
-                    setStatusMessage("Deleted the selected object.");
-                  },
-                },
-              ]}
-            />
-          ) : null}
-
-          {!isFloatingChromeHidden && editor.state.activeTool === "label" ? (
-            <ToolActionPalette
-              ariaLabel="Label tool"
-              actions={[
-                {
-                  id: "label-hint",
-                  label: "Tap canvas to place a net label",
-                  disabled: true,
-                  onClick: () => undefined,
-                },
-              ]}
-            />
-          ) : null}
-
-          {!isFloatingChromeHidden && editor.state.activeTool === "text" ? (
-            <ToolActionPalette
-              ariaLabel="Text tool"
-              actions={[
-                {
-                  id: "text-hint",
-                  label: "Tap canvas to place a text note",
-                  disabled: true,
-                  onClick: () => undefined,
-                },
-              ]}
-            />
-          ) : null}
-
           <SchematicCanvas
             ref={canvasRef}
             project={editor.state.project}
@@ -928,25 +916,11 @@ function App() {
       </div>
 
       {!isFloatingChromeHidden ? (
-        <UndoRedoButtons
-          canUndo={editor.canUndo}
-          canRedo={editor.canRedo}
-          onUndo={() => {
-            editor.undo();
-            setStatusMessage("Undid the last action.");
-          }}
-          onRedo={() => {
-            editor.redo();
-            setStatusMessage("Redid the last action.");
-          }}
-        />
-      ) : null}
-
-      {!isFloatingChromeHidden ? (
         <div className="pointer-events-none fixed right-[max(0.75rem,env(safe-area-inset-right))] bottom-[max(5.5rem,env(safe-area-inset-bottom))] z-50 flex flex-col-reverse items-end gap-3">
           <EditorRightRail
             activeTool={editor.state.activeTool}
             onAction={handleBottomToolbarAction}
+            theme={appSettings.colorScheme}
           />
           {editor.state.activeTool === "wire" ? (
             <WireToolRail>
@@ -965,6 +939,24 @@ function App() {
               />
             </WireToolRail>
           ) : null}
+          <EditorContextRail
+            hidden={isFloatingChromeHidden}
+            actions={selectContextActions}
+            theme={appSettings.colorScheme}
+          />
+          <UndoRedoRail
+            hidden={isFloatingChromeHidden}
+            canUndo={editor.canUndo}
+            canRedo={editor.canRedo}
+            onUndo={() => {
+              editor.undo();
+              setStatusMessage("Undid the last action.");
+            }}
+            onRedo={() => {
+              editor.redo();
+              setStatusMessage("Redid the last action.");
+            }}
+          />
         </div>
       ) : null}
 

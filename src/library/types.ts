@@ -121,6 +121,8 @@ export type NetLabel = {
   x: number;
   y: number;
   rotation: 0 | 90 | 180 | 270;
+  pinConnection?: WireConnection;
+  wireId?: string;
 };
 
 export type TextNote = {
@@ -128,6 +130,8 @@ export type TextNote = {
   text: string;
   x: number;
   y: number;
+  pinConnection?: WireConnection;
+  wireId?: string;
 };
 
 export type SchematicProject = {

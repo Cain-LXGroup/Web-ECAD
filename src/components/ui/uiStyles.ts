@@ -1,12 +1,12 @@
 /** Shared chrome styles — Apple-like glass panels (not used on the schematic worksheet). */
 
 export const glassPanel =
-  "rounded-[1.35rem] border border-white/10 bg-slate-950/55 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-2xl backdrop-saturate-150";
+  "rounded-[1.35rem] border border-[var(--chrome-border)] bg-[var(--chrome-panel)] shadow-[var(--chrome-shadow)] backdrop-blur-2xl backdrop-saturate-150";
 
 export const glassPanelInset = "rounded-2xl border border-white/8 bg-white/[0.04]";
 
 export const glassDock =
-  "rounded-[1.75rem] border border-white/12 bg-slate-950/70 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-3xl backdrop-saturate-150";
+  "rounded-[1.75rem] border border-[var(--chrome-border)] bg-[var(--chrome-dock)] shadow-[var(--chrome-shadow)] backdrop-blur-3xl backdrop-saturate-150";
 
 export const bubbleButtonBase =
   "touch-manipulation rounded-2xl text-base font-semibold transition-all duration-200 ease-out active:scale-[0.97]";

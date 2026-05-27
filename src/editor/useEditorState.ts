@@ -23,12 +23,13 @@ import {
   pushHistorySnapshot,
   type EditorHistorySnapshot,
 } from "./editorHistory";
+import { resolveLabelAnchor, syncAnchoredLabels } from "./labelAnchoring";
 import { getProjectBounds, getSelectionBounds } from "./projectBounds";
 import { DEFAULT_GRID_SIZE, snapPoint } from "./snapping";
 import { normalizeRotation, toggleMirror } from "./transforms";
 import { getViewportForBounds } from "./viewportFitting";
 
-export type Tool = "select" | "wire" | "label" | "text" | "pan";
+export type Tool = "select" | "wire" | "label" | "text";
 
 export type WireDraftState = {
   points: Point[];
@@ -81,13 +82,18 @@ const snapPoints = (points: Point[], gridSize: number): Point[] => {
   return points.map((point) => snapPoint(point, gridSize));
 };
 
+type UseEditorStateOptions = {
+  wireRouteClearance?: number;
+};
+
 export const useEditorState = (
   initialProject: SchematicProject,
   symbolIndex: Record<string, LibrarySymbol>,
+  { wireRouteClearance = 120 }: UseEditorStateOptions = {},
 ) => {
   const [project, setProject] = useState<SchematicProject>(initialProject);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [activeTool, setActiveTool] = useState<Tool>("pan");
+  const [activeTool, setActiveTool] = useState<Tool>("select");
   const [zoom, setZoomState] = useState(1);
   const [pan, setPanState] = useState<Point>({ x: 0, y: 0 });
   const [placingSymbolId, setPlacingSymbolIdState] = useState<string | undefined>(undefined);
@@ -104,10 +110,12 @@ export const useEditorState = (
         wireCount: nextProject.wires.length,
       });
 
-      return {
+      const wiredProject = {
         ...nextProject,
         wires: nextProject.wires.map((wire) => applyWireConnections(wire, nextProject, symbolIndex)),
       };
+
+      return syncAnchoredLabels(wiredProject, symbolIndex);
     },
     [symbolIndex],
   );
@@ -121,10 +129,11 @@ export const useEditorState = (
       project: currentProject,
       symbolIndex,
       gridSize: currentProject.gridSize ?? DEFAULT_GRID_SIZE,
+      routeClearancePx: wireRouteClearance,
       startConnection,
       endConnection,
     }),
-    [symbolIndex],
+    [symbolIndex, wireRouteClearance],
   );
 
   const resolveWireAnchor = useCallback(
@@ -213,7 +222,7 @@ export const useEditorState = (
     setSelectedIds([]);
     setWireDraft(undefined);
     setPlacingSymbolIdState(undefined);
-    setActiveTool("pan");
+    setActiveTool("select");
     setWireRoutingModeState("auto");
     clearHistory();
   }, [clearHistory, initialProject.id, normalizeProjectWires]);
@@ -427,7 +436,7 @@ export const useEditorState = (
       setSelectedIds([]);
       setWireDraft(undefined);
       setPlacingSymbolIdState(undefined);
-      setActiveTool("pan");
+      setActiveTool("select");
       clearHistory();
     },
     setPlacingSymbolId: (symbolId?: string) => {
@@ -804,6 +813,9 @@ export const useEditorState = (
       console.info("[useEditorState] Adding net label", { text, point });
 
       const labelId = `label-${uuidv4()}`;
+      const gridSize = project.gridSize || DEFAULT_GRID_SIZE;
+      const anchor = resolveLabelAnchor(point, project, symbolIndex, gridSize);
+      const snapped = snapPoint(anchor.point, gridSize);
 
       applyProjectUpdate("addNetLabel", (currentProject) => ({
         ...currentProject,
@@ -813,7 +825,10 @@ export const useEditorState = (
             id: labelId,
             text,
             rotation: 0,
-            ...snapPoint(point, currentProject.gridSize || DEFAULT_GRID_SIZE),
+            x: snapped.x,
+            y: snapped.y,
+            pinConnection: anchor.pinConnection,
+            wireId: anchor.wireId,
           },
         ],
       }));
@@ -824,6 +839,9 @@ export const useEditorState = (
       console.info("[useEditorState] Adding text note", { text, point });
 
       const noteId = `note-${uuidv4()}`;
+      const gridSize = project.gridSize || DEFAULT_GRID_SIZE;
+      const anchor = resolveLabelAnchor(point, project, symbolIndex, gridSize);
+      const snapped = snapPoint(anchor.point, gridSize);
 
       applyProjectUpdate("addTextNote", (currentProject) => ({
         ...currentProject,
@@ -832,7 +850,10 @@ export const useEditorState = (
           {
             id: noteId,
             text,
-            ...snapPoint(point, currentProject.gridSize || DEFAULT_GRID_SIZE),
+            x: snapped.x,
+            y: snapped.y,
+            pinConnection: anchor.pinConnection,
+            wireId: anchor.wireId,
           },
         ],
       }));

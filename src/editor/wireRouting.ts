@@ -411,6 +411,7 @@ export const applyWireConnections = (
         project,
         symbolIndex,
         gridSize: project.gridSize ?? 50,
+        routeClearancePx: undefined,
         startConnection: wire.startConnection,
         endConnection: wire.endConnection,
       }),

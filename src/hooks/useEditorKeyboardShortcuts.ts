@@ -79,8 +79,6 @@ export const useEditorKeyboardShortcuts = ({
         w: "wire",
         l: "label",
         t: "text",
-        h: "pan",
-        p: "pan",
       };
 
       const nextTool = toolByKey[key];
