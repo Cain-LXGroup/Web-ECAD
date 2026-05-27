@@ -1,6 +1,5 @@
 import type { LibrarySymbol } from "../library/types";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
-import { SymbolPreview } from "./SymbolPreview";
 
 type SymbolSearchPanelProps = {
   query: string;
@@ -40,8 +39,6 @@ export const SymbolSearchPanel = ({
     selectedSymbolId,
   });
 
-  const selectedSymbol = symbols.find((symbol) => symbol.id === selectedSymbolId);
-
   return (
     <section
       className="flex min-h-0 flex-1 flex-col rounded-2xl border p-4"
@@ -68,7 +65,7 @@ export const SymbolSearchPanel = ({
       </label>
 
       <div
-        className="mb-3 min-h-0 flex-1 overflow-y-auto rounded-2xl border"
+        className="min-h-0 flex-1 overflow-y-auto rounded-2xl border"
         style={{ borderColor: "rgba(136, 192, 112, 0.18)", backgroundColor: kicadSchematicTheme.background }}
       >
         {symbols.length === 0 ? (
@@ -81,60 +78,95 @@ export const SymbolSearchPanel = ({
               const selected = symbol.id === selectedSymbolId;
               const valueLabel = getSymbolValueLabel(symbol);
               const secondaryLabel = getSymbolSecondaryLabel(symbol);
+              const manufacturer = symbol.properties?.Manufacturer;
+              const lcsc = symbol.properties?.LCSC;
+              const part = symbol.properties?.Part;
+              const description = symbol.properties?.Description ?? symbol.description;
 
               return (
                 <li key={symbol.id} className="border-b border-slate-800/80 last:border-b-0">
-                  <button
-                    className="flex w-full touch-manipulation flex-col gap-1 px-4 py-3 text-left"
+                  <div
+                    className="px-4 py-3"
                     style={{
                       backgroundColor: selected ? "rgba(112, 192, 192, 0.12)" : "transparent",
                     }}
-                    type="button"
-                    onClick={() => onSelectSymbol(symbol.id)}
                   >
-                    <span
-                      className="font-bold leading-tight"
-                      style={{
-                        color: kicadSchematicTheme.valueText,
-                        fontFamily: kicadSchematicTheme.fontFamily,
-                        fontSize: "1.05rem",
-                      }}
+                    <button
+                      className="flex w-full touch-manipulation flex-col gap-1 text-left"
+                      type="button"
+                      onClick={() => onSelectSymbol(symbol.id)}
                     >
-                      {valueLabel}
-                    </span>
-                    <span
-                      className="font-semibold"
-                      style={{
-                        color: kicadSchematicTheme.refText,
-                        fontFamily: kicadSchematicTheme.fontFamily,
-                        fontSize: "0.95rem",
-                      }}
-                    >
-                      {symbol.referencePrefix ? `${symbol.referencePrefix}?` : symbol.name} · {symbol.name}
-                    </span>
-                    <span className="text-xs text-slate-400">{secondaryLabel}</span>
-                  </button>
+                      <span
+                        className="font-bold leading-tight"
+                        style={{
+                          color: kicadSchematicTheme.valueText,
+                          fontFamily: kicadSchematicTheme.fontFamily,
+                          fontSize: "1.05rem",
+                        }}
+                      >
+                        {valueLabel}
+                      </span>
+                      <span
+                        className="font-semibold"
+                        style={{
+                          color: kicadSchematicTheme.refText,
+                          fontFamily: kicadSchematicTheme.fontFamily,
+                          fontSize: "0.95rem",
+                        }}
+                      >
+                        {symbol.referencePrefix ? `${symbol.referencePrefix}?` : symbol.name} · {symbol.name}
+                      </span>
+                      <span className="text-xs text-slate-400">{secondaryLabel}</span>
+                    </button>
+
+                    {selected ? (
+                      <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3">
+                        <button
+                          className="w-full touch-manipulation rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950"
+                          type="button"
+                          onClick={() => onPlaceSymbol(symbol.id)}
+                        >
+                          Place {valueLabel}
+                        </button>
+                        <dl className="mt-3 grid gap-2 text-xs text-slate-300">
+                          <div>
+                            <dt className="text-slate-500">Library</dt>
+                            <dd>{symbol.libraryName}</dd>
+                          </div>
+                          {manufacturer ? (
+                            <div>
+                              <dt className="text-slate-500">Manufacturer</dt>
+                              <dd>{manufacturer}</dd>
+                            </div>
+                          ) : null}
+                          {part ? (
+                            <div>
+                              <dt className="text-slate-500">Part</dt>
+                              <dd>{part}</dd>
+                            </div>
+                          ) : null}
+                          {lcsc ? (
+                            <div>
+                              <dt className="text-slate-500">LCSC</dt>
+                              <dd>{lcsc}</dd>
+                            </div>
+                          ) : null}
+                          {description ? (
+                            <div>
+                              <dt className="text-slate-500">Description</dt>
+                              <dd className="max-h-12 overflow-hidden text-ellipsis">{description}</dd>
+                            </div>
+                          ) : null}
+                        </dl>
+                      </div>
+                    ) : null}
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
       </div>
-
-      <button
-        className="mb-3 w-full touch-manipulation rounded-2xl bg-cyan-500 px-4 py-3 text-base font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-        type="button"
-        disabled={!selectedSymbol}
-        onClick={() => {
-          if (selectedSymbol) {
-            onPlaceSymbol(selectedSymbol.id);
-          }
-        }}
-      >
-        Place
-      </button>
-
-      <SymbolPreview symbol={selectedSymbol} />
     </section>
   );
 };

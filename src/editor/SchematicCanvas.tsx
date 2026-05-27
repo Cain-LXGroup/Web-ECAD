@@ -17,8 +17,8 @@ import { getWireJunctionPoints } from "./wireRouting";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 import { WireView } from "./WireView";
 
-const CANVAS_WIDTH = 5000;
-const CANVAS_HEIGHT = 3500;
+const VIEWPORT_WIDTH = 5000;
+const VIEWPORT_HEIGHT = 3500;
 
 type DragState = {
   pointerId: number;
@@ -33,7 +33,6 @@ type SchematicCanvasProps = {
   activeTool: Tool;
   placingSymbolId?: string;
   wireDraft?: WireDraftState;
-  wireRoutingMode: WireDraftState["routingMode"];
   zoom: number;
   pan: Point;
   onSelectObject: (id: string) => void;
@@ -53,6 +52,17 @@ const clamp = (value: number, min: number, max: number): number => {
   console.info("[SchematicCanvas] Clamping numeric value", { value, min, max });
 
   return Math.min(Math.max(value, min), max);
+};
+
+const getWorldFillRect = (center: Point, viewWidth: number, viewHeight: number) => {
+  console.info("[SchematicCanvas] Calculating world fill rectangle", { center, viewWidth, viewHeight });
+
+  return {
+    x: center.x - viewWidth * 4,
+    y: center.y - viewHeight * 4,
+    width: viewWidth * 8,
+    height: viewHeight * 8,
+  };
 };
 
 const promptForText = (variant: "label" | "text"): string | null => {
@@ -76,7 +86,6 @@ export const SchematicCanvas = ({
   activeTool,
   placingSymbolId,
   wireDraft,
-  wireRoutingMode,
   zoom,
   pan,
   onSelectObject,
@@ -104,12 +113,12 @@ export const SchematicCanvas = ({
   const viewBox = useMemo(() => {
     console.info("[SchematicCanvas] Calculating viewBox", { zoom, pan });
 
-    const width = CANVAS_WIDTH / zoom;
-    const height = CANVAS_HEIGHT / zoom;
+    const width = VIEWPORT_WIDTH / zoom;
+    const height = VIEWPORT_HEIGHT / zoom;
 
     return {
-      x: clamp(pan.x, 0, Math.max(CANVAS_WIDTH - width, 0)),
-      y: clamp(pan.y, 0, Math.max(CANVAS_HEIGHT - height, 0)),
+      x: pan.x,
+      y: pan.y,
       width,
       height,
     };
@@ -292,12 +301,12 @@ export const SchematicCanvas = ({
     const relativeX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
     const relativeY = bounds.height > 0 ? (event.clientY - bounds.top) / bounds.height : 0.5;
     const nextZoom = clamp(zoom * (event.deltaY < 0 ? 1.1 : 0.9), 0.45, 2.8);
-    const nextViewBoxWidth = CANVAS_WIDTH / nextZoom;
-    const nextViewBoxHeight = CANVAS_HEIGHT / nextZoom;
+    const nextViewBoxWidth = VIEWPORT_WIDTH / nextZoom;
+    const nextViewBoxHeight = VIEWPORT_HEIGHT / nextZoom;
 
     onSetPan({
-      x: clamp(pointerPoint.x - relativeX * nextViewBoxWidth, 0, Math.max(CANVAS_WIDTH - nextViewBoxWidth, 0)),
-      y: clamp(pointerPoint.y - relativeY * nextViewBoxHeight, 0, Math.max(CANVAS_HEIGHT - nextViewBoxHeight, 0)),
+      x: pointerPoint.x - relativeX * nextViewBoxWidth,
+      y: pointerPoint.y - relativeY * nextViewBoxHeight,
     });
     onSetZoom(nextZoom);
   };
@@ -315,43 +324,30 @@ export const SchematicCanvas = ({
     () => getWireJunctionPoints(project.wires),
     [project.wires],
   );
+  const worldFillRect = useMemo(
+    () =>
+      getWorldFillRect(
+        {
+          x: viewBox.x + viewBox.width / 2,
+          y: viewBox.y + viewBox.height / 2,
+        },
+        viewBox.width,
+        viewBox.height,
+      ),
+    [viewBox.height, viewBox.width, viewBox.x, viewBox.y],
+  );
 
   return (
     <section
-      className="schematic-canvas relative min-h-[620px] overflow-hidden rounded-[2rem] border shadow-2xl shadow-slate-950/50"
+      className="schematic-canvas relative min-h-0 flex-1 overflow-hidden rounded-none border-0 shadow-none xl:rounded-[2rem] xl:border xl:shadow-2xl xl:shadow-slate-950/50"
       style={{
         borderColor: "rgba(192, 112, 112, 0.28)",
         backgroundColor: kicadSchematicTheme.background,
       }}
     >
-      <div className="absolute inset-x-0 top-0 z-20 flex flex-wrap items-center gap-3 p-4">
-        <span className="rounded-full border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-200">
-          Tool: {activeTool}
-        </span>
-        <span className="rounded-full border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-300">
-          Zoom {zoom.toFixed(2)}x
-        </span>
-        <span className="rounded-full border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-300">
-          Grid {gridSize}
-        </span>
-        <span className="rounded-full border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-300">
-          Wire Mode {wireDraft?.routingMode ?? wireRoutingMode}
-        </span>
-        {selectedSymbolName ? (
-          <span className="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">
-            Tap canvas to place {selectedSymbolName}
-          </span>
-        ) : null}
-        {wireDraft && wireDraft.points.length > 0 ? (
-          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-            Wire draft: {wireDraft.points.length} points
-          </span>
-        ) : null}
-      </div>
-
       <svg
         ref={svgRef}
-        className="h-full min-h-[620px] w-full touch-none"
+        className="h-full min-h-0 w-full touch-none"
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={handleCanvasPointerMove}
@@ -365,8 +361,20 @@ export const SchematicCanvas = ({
           </pattern>
         </defs>
 
-        <rect x={0} y={0} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill={kicadSchematicTheme.background} />
-        <rect x={0} y={0} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="url(#schematic-grid-pattern)" />
+        <rect
+          x={worldFillRect.x}
+          y={worldFillRect.y}
+          width={worldFillRect.width}
+          height={worldFillRect.height}
+          fill={kicadSchematicTheme.background}
+        />
+        <rect
+          x={worldFillRect.x}
+          y={worldFillRect.y}
+          width={worldFillRect.width}
+          height={worldFillRect.height}
+          fill="url(#schematic-grid-pattern)"
+        />
 
         {project.wires.map((wire) => (
           <WireView
@@ -439,6 +447,11 @@ export const SchematicCanvas = ({
             <li>4. Use Wire, Label, and Text to sketch the template.</li>
             <li>5. Save the project locally when the layout looks right.</li>
           </ol>
+        </div>
+      ) : null}
+      {selectedSymbolName ? (
+        <div className="pointer-events-none absolute left-4 top-4 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-200">
+          Tap to place {selectedSymbolName}
         </div>
       ) : null}
     </section>

@@ -11,6 +11,32 @@ npm run dev
 
 Open the URL shown in the terminal (usually `http://localhost:5173`).
 
+## Run on home network with Docker
+
+Host locally on your Docker machine and open it from iPad over Wi-Fi:
+
+```bash
+docker compose up -d --build
+hostname -I
+```
+
+Open on your tablet:
+
+```text
+http://<your-docker-host-lan-ip>:8080
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+Notes:
+- iPad and Docker host must be on the same LAN.
+- First library import still needs internet (Digi-Key/JLCPCB symbol files).
+- Plain HTTP is fine for LAN testing in Chrome.
+
 ## Deploy to GitHub Pages
 
 This repo includes a workflow that publishes the built app to **GitHub Pages** on every push to `main` or `master`.

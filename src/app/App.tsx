@@ -46,6 +46,8 @@ const createBlankProject = (name: string): SchematicProject => {
 };
 
 function App() {
+  console.info("[App] Rendering application shell");
+
   const [allSymbols, setAllSymbols] = useState<LibrarySymbol[]>([]);
   const [visibleSymbols, setVisibleSymbols] = useState<LibrarySymbol[]>([]);
   const [projects, setProjects] = useState<SchematicProject[]>([]);
@@ -69,6 +71,8 @@ function App() {
   const [bundledSeedProgress, setBundledSeedProgress] = useState<BundledLibrarySeedProgress | undefined>(
     undefined,
   );
+  const [isLibraryDrawerOpen, setIsLibraryDrawerOpen] = useState(false);
+  const [isInspectorDrawerOpen, setIsInspectorDrawerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const symbolIndex = useMemo(
@@ -431,6 +435,7 @@ function App() {
 
       editor.setPlacingSymbolId(symbolId);
       setSelectedSymbolId(symbolId);
+      setIsLibraryDrawerOpen(false);
       setStatusMessage(`Tap the canvas to place ${symbolIndex[symbolId]?.name ?? "the selected symbol"}.`);
     },
     [editor, symbolIndex],
@@ -476,6 +481,109 @@ function App() {
       );
     },
     [editor],
+  );
+
+  const inspectorSections = (
+    <>
+      <InspectorPanel
+        project={editor.state.project}
+        symbolIndex={symbolIndex}
+        selectedIds={editor.state.selectedIds}
+        selectedCanvasObject={selectedCanvasObject}
+      />
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <h2 className="text-base font-semibold text-white">Placement</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          {editor.state.placingSymbolId
+            ? `Ready to place ${symbolIndex[editor.state.placingSymbolId]?.name ?? "selected symbol"}.`
+            : selectedLibrarySymbol
+              ? `Selected library symbol: ${selectedLibrarySymbol.name}`
+              : "Choose a library symbol, then tap Place."}
+        </p>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <h2 className="text-base font-semibold text-white">Wire Routing</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          Manual keeps your placed corners. Auto re-traces a clean orthogonal path between the endpoints.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {(["manual", "auto"] as const).map((routingMode) => (
+            <button
+              key={routingMode}
+              className={`touch-manipulation rounded-2xl border px-4 py-3 text-base font-medium transition-colors ${
+                editor.state.wireRoutingMode === routingMode
+                  ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
+                  : "border-slate-700 bg-slate-950 text-white hover:border-cyan-400 hover:text-cyan-300"
+              }`}
+              type="button"
+              onClick={() => handleWireRoutingModeChange(routingMode)}
+            >
+              {routingMode === "manual" ? "Manual" : "Auto Route"}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <h2 className="text-base font-semibold text-white">Wire Draft</h2>
+        <div className="mt-3 grid gap-3">
+          <button
+            className="touch-manipulation rounded-2xl bg-cyan-500 px-4 py-3 text-base font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+            type="button"
+            disabled={!editor.state.wireDraft || editor.state.wireDraft.points.length < 2}
+            onClick={() => {
+              editor.finishWire();
+              setStatusMessage("Finished the current wire.");
+            }}
+          >
+            Finish Wire
+          </button>
+          <button
+            className="touch-manipulation rounded-2xl bg-slate-800 px-4 py-3 text-base font-medium text-white disabled:cursor-not-allowed disabled:text-slate-500"
+            type="button"
+            disabled={!editor.state.wireDraft}
+            onClick={() => {
+              editor.cancelWire();
+              setStatusMessage("Cancelled the current wire draft.");
+            }}
+          >
+            Cancel Wire
+          </button>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <h2 className="text-base font-semibold text-white">Local Data Status</h2>
+        <dl className="mt-4 space-y-3 text-sm text-slate-300">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-slate-500">Symbols</dt>
+            <dd>{allSymbols.length}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-slate-500">Projects</dt>
+            <dd>{projects.length}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-slate-500">Selected Symbol</dt>
+            <dd>{selectedSymbolId ?? "None"}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-slate-500">Canvas Symbols</dt>
+            <dd>{editor.state.project.symbols.length}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-slate-500">Wire Mode</dt>
+            <dd>{editor.state.wireRoutingMode}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-slate-500">Shell</dt>
+            <dd>{isLoading ? "Loading" : "Ready"}</dd>
+          </div>
+        </dl>
+      </section>
+    </>
   );
 
   return (
@@ -536,19 +644,44 @@ function App() {
         }
       />
 
-      <div className="mx-auto grid h-full min-h-0 w-full max-w-[1800px] flex-1 gap-4 overflow-hidden p-4 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
-        <Sidebar title="Symbol Library">
-          <SymbolSearchPanel
-            query={symbolQuery}
-            symbols={visibleSymbols}
-            selectedSymbolId={selectedSymbolId}
-            onQueryChange={setSymbolQuery}
-            onSelectSymbol={setSelectedSymbolId}
-            onPlaceSymbol={handlePlaceSelectedSymbol}
-          />
-        </Sidebar>
+      <div className="relative grid h-full min-h-0 w-full flex-1 gap-0 overflow-hidden p-0 xl:mx-auto xl:max-w-[1800px] xl:gap-4 xl:p-4 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+        <div className="hidden xl:block">
+          <Sidebar title="Symbol Library">
+            <SymbolSearchPanel
+              query={symbolQuery}
+              symbols={visibleSymbols}
+              selectedSymbolId={selectedSymbolId}
+              onQueryChange={setSymbolQuery}
+              onSelectSymbol={setSelectedSymbolId}
+              onPlaceSymbol={handlePlaceSelectedSymbol}
+            />
+          </Sidebar>
+        </div>
 
-        <div className="flex min-h-0 flex-col gap-4">
+        <div className="absolute left-3 top-3 z-40 flex gap-2 xl:hidden">
+          <button
+            className="touch-manipulation rounded-full border border-slate-700 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-slate-100"
+            type="button"
+            onClick={() => {
+              console.info("[App] Toggling symbol library drawer", { next: !isLibraryDrawerOpen });
+              setIsLibraryDrawerOpen((current) => !current);
+            }}
+          >
+            Symbols
+          </button>
+          <button
+            className="touch-manipulation rounded-full border border-slate-700 bg-slate-950/90 px-4 py-2 text-sm font-semibold text-slate-100"
+            type="button"
+            onClick={() => {
+              console.info("[App] Toggling inspector drawer", { next: !isInspectorDrawerOpen });
+              setIsInspectorDrawerOpen((current) => !current);
+            }}
+          >
+            Inspector
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-col gap-4 pb-24 xl:pb-0">
           <SchematicCanvas
             project={editor.state.project}
             symbolIndex={symbolIndex}
@@ -556,7 +689,6 @@ function App() {
             activeTool={editor.state.activeTool}
             placingSymbolId={editor.state.placingSymbolId}
             wireDraft={editor.state.wireDraft}
-            wireRoutingMode={editor.state.wireRoutingMode}
             zoom={editor.state.zoom}
             pan={editor.state.pan}
             onSelectObject={editor.selectObject}
@@ -572,7 +704,7 @@ function App() {
             onSetZoom={editor.setZoom}
           />
 
-          <div className="grid gap-3 rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 md:grid-cols-4">
+          <div className="hidden gap-3 rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 md:grid-cols-4 xl:grid">
             {bottomToolbarActions.map((action) => (
               <button
                 key={action.id}
@@ -590,107 +722,84 @@ function App() {
           </div>
         </div>
 
-        <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4">
-          <InspectorPanel
-            project={editor.state.project}
-            symbolIndex={symbolIndex}
-            selectedIds={editor.state.selectedIds}
-            selectedCanvasObject={selectedCanvasObject}
-          />
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <h2 className="text-base font-semibold text-white">Placement</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              {editor.state.placingSymbolId
-                ? `Ready to place ${symbolIndex[editor.state.placingSymbolId]?.name ?? "selected symbol"}.`
-                : selectedLibrarySymbol
-                  ? `Selected library symbol: ${selectedLibrarySymbol.name}`
-                  : "Choose a library symbol, then tap Place."}
-            </p>
-          </section>
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <h2 className="text-base font-semibold text-white">Wire Routing</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              Manual keeps your placed corners. Auto re-traces a clean orthogonal path between the endpoints.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              {(["manual", "auto"] as const).map((routingMode) => (
-                <button
-                  key={routingMode}
-                  className={`touch-manipulation rounded-2xl border px-4 py-3 text-base font-medium transition-colors ${
-                    editor.state.wireRoutingMode === routingMode
-                      ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-                      : "border-slate-700 bg-slate-950 text-white hover:border-cyan-400 hover:text-cyan-300"
-                  }`}
-                  type="button"
-                  onClick={() => handleWireRoutingModeChange(routingMode)}
-                >
-                  {routingMode === "manual" ? "Manual" : "Auto Route"}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <h2 className="text-base font-semibold text-white">Wire Draft</h2>
-            <div className="mt-3 grid gap-3">
-              <button
-                className="touch-manipulation rounded-2xl bg-cyan-500 px-4 py-3 text-base font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-                type="button"
-                disabled={!editor.state.wireDraft || editor.state.wireDraft.points.length < 2}
-                onClick={() => {
-                  editor.finishWire();
-                  setStatusMessage("Finished the current wire.");
-                }}
-              >
-                Finish Wire
-              </button>
-              <button
-                className="touch-manipulation rounded-2xl bg-slate-800 px-4 py-3 text-base font-medium text-white disabled:cursor-not-allowed disabled:text-slate-500"
-                type="button"
-                disabled={!editor.state.wireDraft}
-                onClick={() => {
-                  editor.cancelWire();
-                  setStatusMessage("Cancelled the current wire draft.");
-                }}
-              >
-                Cancel Wire
-              </button>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <h2 className="text-base font-semibold text-white">Local Data Status</h2>
-            <dl className="mt-4 space-y-3 text-sm text-slate-300">
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Symbols</dt>
-                <dd>{allSymbols.length}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Projects</dt>
-                <dd>{projects.length}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Selected Symbol</dt>
-                <dd>{selectedSymbolId ?? "None"}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Canvas Symbols</dt>
-                <dd>{editor.state.project.symbols.length}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Wire Mode</dt>
-                <dd>{editor.state.wireRoutingMode}</dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-slate-500">Shell</dt>
-                <dd>{isLoading ? "Loading" : "Ready"}</dd>
-              </div>
-            </dl>
-          </section>
+        <aside className="hidden min-h-0 flex-col gap-4 overflow-y-auto rounded-[2rem] border border-slate-800 bg-slate-900/80 p-4 xl:flex">
+          {inspectorSections}
         </aside>
       </div>
+
+      <div className="fixed inset-x-0 bottom-3 z-50 px-3 xl:hidden">
+        <div className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-700 bg-slate-950/90 p-2 shadow-2xl shadow-black/50">
+          {bottomToolbarActions.map((action) => (
+            <button
+              key={action.id}
+              className={`min-w-[108px] touch-manipulation rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                editor.state.activeTool === action.id
+                  ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
+                  : "border-slate-700 bg-slate-950 text-white hover:border-cyan-400 hover:text-cyan-300"
+              }`}
+              type="button"
+              onClick={() => handleBottomToolbarAction(action.id)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLibraryDrawerOpen ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 xl:hidden" onClick={() => setIsLibraryDrawerOpen(false)}>
+          <div
+            className="h-full max-w-md overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/95 p-4"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">Symbol Library</h2>
+              <button
+                className="rounded-full border border-slate-600 px-3 py-1 text-sm text-slate-200"
+                type="button"
+                onClick={() => setIsLibraryDrawerOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="h-[calc(100%-44px)]">
+              <SymbolSearchPanel
+                query={symbolQuery}
+                symbols={visibleSymbols}
+                selectedSymbolId={selectedSymbolId}
+                onQueryChange={setSymbolQuery}
+                onSelectSymbol={setSelectedSymbolId}
+                onPlaceSymbol={handlePlaceSelectedSymbol}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isInspectorDrawerOpen ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 p-4 xl:hidden" onClick={() => setIsInspectorDrawerOpen(false)}>
+          <div
+            className="ml-auto h-full max-w-md overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900/95 p-4"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">Inspector</h2>
+              <button
+                className="rounded-full border border-slate-600 px-3 py-1 text-sm text-slate-200"
+                type="button"
+                onClick={() => setIsInspectorDrawerOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex flex-col gap-4">{inspectorSections}</div>
+          </div>
+        </div>
+      ) : null}
 
       <ContextMenu />
     </div>

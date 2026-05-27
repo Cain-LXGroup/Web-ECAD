@@ -1,0 +1,10 @@
+services:
+  schematic-tablet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: schematic-tablet:local
+    container_name: schematic-tablet
+    ports:
+      - "8080:80"
+    restart: unless-stopped
