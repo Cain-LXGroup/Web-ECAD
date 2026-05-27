@@ -4,15 +4,51 @@
 
 :root,
 [data-theme="dark"] {
-  color: #e2e8f0;
+  color: var(--chrome-text);
+  --chrome-bg: #020617;
+  --chrome-bg-gradient-start: #030712;
+  --chrome-bg-gradient-mid: #0f172a;
+  --chrome-bg-gradient-end: #020617;
+  --chrome-glow-cyan: rgba(34, 211, 238, 0.14);
+  --chrome-glow-indigo: rgba(99, 102, 241, 0.08);
+  --chrome-surface: rgba(2, 6, 23, 0.55);
+  --chrome-panel: rgba(2, 6, 23, 0.55);
+  --chrome-dock: rgba(2, 6, 23, 0.7);
+  --chrome-inset-bg: rgba(255, 255, 255, 0.04);
+  --chrome-inset-border: rgba(255, 255, 255, 0.08);
+  --chrome-border: rgba(255, 255, 255, 0.12);
+  --chrome-border-strong: rgba(255, 255, 255, 0.2);
   --chrome-heading: #f8fafc;
   --chrome-text: #e2e8f0;
   --chrome-muted: #94a3b8;
-  --chrome-border: rgba(255, 255, 255, 0.12);
-  --chrome-panel: rgba(2, 6, 23, 0.55);
-  --chrome-dock: rgba(2, 6, 23, 0.7);
+  --chrome-faint: #64748b;
+  --chrome-accent: #22d3ee;
+  --chrome-accent-muted: rgba(34, 211, 238, 0.9);
+  --chrome-accent-surface: rgba(34, 211, 238, 0.15);
+  --chrome-accent-text: #a5f3fc;
+  --chrome-button-bg: rgba(2, 6, 23, 0.8);
+  --chrome-button-text: #f8fafc;
+  --chrome-button-border: rgba(255, 255, 255, 0.14);
+  --chrome-button-hover-bg: rgba(15, 23, 42, 0.9);
+  --chrome-button-disabled-text: #64748b;
+  --chrome-input-bg: rgba(255, 255, 255, 0.04);
+  --chrome-input-text: #f8fafc;
+  --chrome-input-placeholder: #64748b;
+  --chrome-overlay: rgba(0, 0, 0, 0.45);
+  --chrome-tab-active-bg: rgba(34, 211, 238, 0.25);
+  --chrome-tab-active-text: #a5f3fc;
+  --chrome-tab-idle-text: #cbd5e1;
+  --chrome-tab-hover-bg: rgba(255, 255, 255, 0.1);
+  --chrome-chip-bg: rgba(2, 6, 23, 0.65);
+  --chrome-chip-text: #e2e8f0;
+  --chrome-divider: rgba(255, 255, 255, 0.1);
+  --chrome-list-hover: rgba(15, 23, 42, 0.9);
+  --chrome-list-selected: rgba(34, 211, 238, 0.1);
+  --chrome-list-divider: #1e293b;
   --chrome-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-  background-color: #020617;
+  --chrome-canvas-frame-border: rgba(192, 112, 112, 0.28);
+  --chrome-canvas-frame-shadow: rgba(2, 6, 23, 0.5);
+  background-color: var(--chrome-bg);
   font-size: 17px;
   line-height: 1.5;
   font-family:
@@ -44,28 +80,62 @@ body {
   overflow: hidden;
   overscroll-behavior: none;
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(34, 211, 238, 0.14), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99, 102, 241, 0.08), transparent 50%),
-    linear-gradient(180deg, #030712 0%, #0f172a 48%, #020617 100%);
+    radial-gradient(ellipse 80% 50% at 50% -10%, var(--chrome-glow-cyan), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, var(--chrome-glow-indigo), transparent 50%),
+    linear-gradient(
+      180deg,
+      var(--chrome-bg-gradient-start) 0%,
+      var(--chrome-bg-gradient-mid) 48%,
+      var(--chrome-bg-gradient-end) 100%
+    );
 }
 
 [data-theme="light"] {
-  color: #0f172a;
+  color: var(--chrome-text);
+  --chrome-bg: #e2e8f0;
+  --chrome-bg-gradient-start: #f1f5f9;
+  --chrome-bg-gradient-mid: #e2e8f0;
+  --chrome-bg-gradient-end: #cbd5e1;
+  --chrome-glow-cyan: rgba(14, 165, 233, 0.12);
+  --chrome-glow-indigo: rgba(99, 102, 241, 0.06);
+  --chrome-surface: rgba(255, 255, 255, 0.82);
+  --chrome-panel: rgba(255, 255, 255, 0.82);
+  --chrome-dock: rgba(255, 255, 255, 0.92);
+  --chrome-inset-bg: rgba(15, 23, 42, 0.04);
+  --chrome-inset-border: rgba(15, 23, 42, 0.1);
+  --chrome-border: rgba(15, 23, 42, 0.12);
+  --chrome-border-strong: rgba(15, 23, 42, 0.2);
   --chrome-heading: #0f172a;
   --chrome-text: #1e293b;
   --chrome-muted: #475569;
-  --chrome-border: rgba(15, 23, 42, 0.12);
-  --chrome-panel: rgba(255, 255, 255, 0.82);
-  --chrome-dock: rgba(255, 255, 255, 0.9);
+  --chrome-faint: #64748b;
+  --chrome-accent: #0891b2;
+  --chrome-accent-muted: #0e7490;
+  --chrome-accent-surface: rgba(8, 145, 178, 0.12);
+  --chrome-accent-text: #0c4a6e;
+  --chrome-button-bg: rgba(255, 255, 255, 0.95);
+  --chrome-button-text: #0f172a;
+  --chrome-button-border: rgba(15, 23, 42, 0.14);
+  --chrome-button-hover-bg: rgba(241, 245, 249, 1);
+  --chrome-button-disabled-text: #94a3b8;
+  --chrome-input-bg: rgba(255, 255, 255, 0.9);
+  --chrome-input-text: #0f172a;
+  --chrome-input-placeholder: #94a3b8;
+  --chrome-overlay: rgba(15, 23, 42, 0.35);
+  --chrome-tab-active-bg: rgba(8, 145, 178, 0.18);
+  --chrome-tab-active-text: #0c4a6e;
+  --chrome-tab-idle-text: #475569;
+  --chrome-tab-hover-bg: rgba(15, 23, 42, 0.06);
+  --chrome-chip-bg: rgba(255, 255, 255, 0.88);
+  --chrome-chip-text: #334155;
+  --chrome-divider: rgba(15, 23, 42, 0.1);
+  --chrome-list-hover: rgba(241, 245, 249, 1);
+  --chrome-list-selected: rgba(8, 145, 178, 0.1);
+  --chrome-list-divider: #e2e8f0;
   --chrome-shadow: 0 16px 40px rgba(15, 23, 42, 0.15);
-  background-color: #e2e8f0;
-}
-
-[data-theme="light"] body {
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(14, 165, 233, 0.12), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99, 102, 241, 0.06), transparent 50%),
-    linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 48%, #cbd5e1 100%);
+  --chrome-canvas-frame-border: rgba(15, 23, 42, 0.12);
+  --chrome-canvas-frame-shadow: rgba(15, 23, 42, 0.12);
+  background-color: var(--chrome-bg);
 }
 
 * {
@@ -90,6 +160,7 @@ select {
 .app-chrome {
   font-size: 1.0625rem;
   line-height: 1.55;
+  color: var(--chrome-text);
 }
 
 .app-chrome button,

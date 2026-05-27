@@ -1,7 +1,7 @@
 import type { PropsWithChildren, ReactNode } from "react";
 
 import { BubbleButton } from "./BubbleButton";
-import { glassPanel } from "./uiStyles";
+import { chromeHeading, glassPanel } from "./uiStyles";
 
 type SheetDrawerProps = PropsWithChildren<{
   isOpen: boolean;
@@ -30,7 +30,7 @@ export const SheetDrawer = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex bg-black/45 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex bg-[var(--chrome-overlay)] p-3 backdrop-blur-sm"
       onClick={onClose}
       role="presentation"
     >
@@ -42,7 +42,7 @@ export const SheetDrawer = ({
       >
         <header className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{title}</p>
+            <p className={chromeHeading}>{title}</p>
             {headerAccessory}
           </div>
           <BubbleButton variant="secondary" className="!min-h-0 !px-3 !py-2 text-xs" onClick={onClose}>

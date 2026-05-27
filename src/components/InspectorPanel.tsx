@@ -122,9 +122,7 @@ export const InspectorPanel = ({
           </p>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-slate-400">
-          Select a symbol, wire, or label on the canvas to inspect it here.
-        </p>
+        <p className={`mt-2 ${chromeBody}`}>Select a symbol, wire, or label on the canvas to inspect it here.</p>
       )}
     </GlassPanel>
   );

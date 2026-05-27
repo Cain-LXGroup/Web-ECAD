@@ -156,16 +156,16 @@ export const SymbolSearchPanel = ({
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="mb-3">
-        <h3 className="text-base font-semibold text-white">Symbol Library</h3>
-        <p className="mt-1 text-sm text-slate-400">
+        <h3 className={chromeTitle}>Symbol Library</h3>
+        <p className={`mt-1 ${chromeBody}`}>
           Search installed Digi-Key, JLCPCB, starter, or imported libraries.
         </p>
       </div>
 
       <label className="mb-3 block">
-        <span className="mb-2 block text-sm font-medium text-slate-300">Search</span>
+        <span className={`mb-2 block ${chromeLabel}`}>Search</span>
         <input
-          className={`w-full px-4 py-3 text-base text-white outline-none ring-0 placeholder:text-slate-500 focus:border-cyan-400/60 ${glassPanelInset}`}
+          className={chromeInput}
           placeholder="TPS5430, LM741, C12345..."
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
@@ -180,15 +180,15 @@ export const SymbolSearchPanel = ({
         }}
       >
         {favoriteSymbols.length > 0 ? (
-          <div className="border-b border-slate-800/80">
-            <p className="px-4 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-amber-200/90">
+          <div className="border-b border-[var(--chrome-list-divider)]">
+            <p className="px-4 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--chrome-accent-muted)]">
               Favourites
             </p>
             <ul>{favoriteSymbols.map((symbol) => renderSymbolRow(symbol))}</ul>
           </div>
         ) : null}
         {symbols.length === 0 ? (
-          <div className="p-4 text-sm text-slate-500">
+          <div className="p-4 text-sm text-[var(--chrome-faint)]">
             No symbols found. Install a standard library from Workspace, or import your own `.lib` / `.kicad_sym` files.
           </div>
         ) : (
