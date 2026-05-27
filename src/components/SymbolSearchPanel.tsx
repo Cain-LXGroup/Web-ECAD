@@ -2,7 +2,7 @@ import type { LibrarySymbol } from "../library/types";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 import { schematicColorVar } from "../theme/schematicTheme";
 import { BubbleButton } from "./ui/BubbleButton";
-import { glassPanelInset } from "./ui/uiStyles";
+import { chromeBody, chromeInput, chromeLabel, chromeTitle, glassPanelInset } from "./ui/uiStyles";
 
 type SymbolSearchPanelProps = {
   query: string;
