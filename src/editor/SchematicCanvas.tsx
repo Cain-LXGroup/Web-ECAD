@@ -12,14 +12,14 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 
-import type { LibrarySymbol, Point, SchematicProject, WireConnection } from "../library/types";
+import type { LibrarySymbol, PinTextKind, Point, SchematicProject, WireConnection } from "../library/types";
 import { isNetHighlighted, type NetHighlightSet } from "./netHighlight";
 import type { SelectionMode } from "./useEditorState";
 import { LabelView } from "./LabelView";
 import { DEFAULT_GRID_SIZE } from "./snapping";
 import { SymbolInstanceView } from "./SymbolInstanceView";
 import { DEFAULT_SCHEMATIC_TEXT_SIZE } from "./schematicTextSizing";
-import type { Tool, WireDraftState } from "./useEditorState";
+import type { Tool, WireDraftState, PinTextSelection } from "./useEditorState";
 import { getWireJunctionPoints } from "./wireRouting";
 import { schematicColorVar } from "../theme/schematicTheme";
 import { WireNodeHandles, type WireNodeSelection } from "./WireNodeHandles";
@@ -51,7 +51,7 @@ type CanvasTapAction =
 
 type DragState = {
   pointerId: number;
-  mode: "move-selection" | "move-wire-node" | "pan" | "canvas-gesture";
+  mode: "move-selection" | "move-wire-node" | "move-pin-text" | "pan" | "canvas-gesture";
   lastClient: Point;
   lastWorld: Point;
   startClient: Point;
@@ -59,6 +59,7 @@ type DragState = {
   isPanning: boolean;
   tapAction?: CanvasTapAction;
   wireNode?: WireNodeSelection;
+  pinText?: PinTextSelection;
 };
 
 type PinchGestureState = {
@@ -80,6 +81,8 @@ type SchematicCanvasProps = {
   selectedIds: string[];
   netHighlight?: NetHighlightSet;
   selectedWireNode?: WireNodeSelection;
+  symbolPinTextEditInstanceId?: string;
+  selectedPinText?: PinTextSelection;
   activeTool: Tool;
   placingSymbolId?: string;
   wireDraft?: WireDraftState;
@@ -93,6 +96,10 @@ type SchematicCanvasProps = {
   onMoveWireNode: (point: Point) => void;
   onCommitWireNodeEdit: () => void;
   onRemoveWireNodeAt: (wireId: string, pointIndex: number) => void;
+  onSelectPinText: (instanceId: string, pinNumber: string, kind: PinTextKind) => void;
+  onClearPinTextSelection: () => void;
+  onMovePinText: (worldDelta: Point) => void;
+  onCommitPinTextEdit: () => void;
   onMoveSelected: (dx: number, dy: number) => void;
   onSnapSelectedToGrid: () => void;
   onPlaceSymbol: (symbolId: string, point: Point) => void;
@@ -153,6 +160,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     selectedIds,
     netHighlight,
     selectedWireNode,
+    symbolPinTextEditInstanceId,
+    selectedPinText,
     activeTool,
     placingSymbolId,
     wireDraft,
@@ -166,6 +175,10 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     onMoveWireNode,
     onCommitWireNodeEdit,
     onRemoveWireNodeAt,
+    onSelectPinText,
+    onClearPinTextSelection,
+    onMovePinText,
+    onCommitPinTextEdit,
     onMoveSelected,
     onSnapSelectedToGrid,
     onPlaceSymbol,
@@ -486,6 +499,41 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     setMeasureLabel(formatMeasureLabel(canvasPoint, canvasPoint));
   };
 
+  const beginPinTextDrag = (
+    instanceId: string,
+    pinNumber: string,
+    kind: PinTextKind,
+    event: ReactPointerEvent<SVGRectElement>,
+  ) => {
+    console.info("[SchematicCanvas] Beginning pin text drag", { instanceId, pinNumber, kind });
+
+    if (activeTool !== "select" || placingSymbolId || pinchGestureRef.current || wireDraft) {
+      return;
+    }
+
+    const canvasPoint = getCanvasPoint(event);
+    if (!canvasPoint) {
+      return;
+    }
+
+    onSelectPinText(instanceId, pinNumber, kind);
+    event.stopPropagation();
+    capturePointerOnSvg(event);
+    stopInertia();
+    setDragLastClient({ x: event.clientX, y: event.clientY });
+    setDragState({
+      pointerId: event.pointerId,
+      mode: "move-pin-text",
+      lastClient: { x: event.clientX, y: event.clientY },
+      lastWorld: canvasPoint,
+      startClient: { x: event.clientX, y: event.clientY },
+      originWorld: canvasPoint,
+      isPanning: true,
+      pinText: { instanceId, pinNumber, kind },
+    });
+    setMeasureLabel(formatMeasureLabel(canvasPoint, canvasPoint));
+  };
+
   const resolveSelectionMode = (
     id: string,
     event: ReactPointerEvent<SVGElement>,
@@ -505,6 +553,13 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     console.info("[SchematicCanvas] Beginning selection drag", { id });
 
     if (activeTool !== "select" || placingSymbolId || pinchGestureRef.current) {
+      return;
+    }
+
+    if (symbolPinTextEditInstanceId === id) {
+      onClearPinTextSelection();
+      onSelectObject(id, "replace");
+      event.stopPropagation();
       return;
     }
 
@@ -749,6 +804,32 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
+    if (dragState.mode === "move-pin-text") {
+      const worldDelta = applyClientDragStep(svg, event.clientX, event.clientY);
+      if (!worldDelta) {
+        return;
+      }
+
+      onMovePinText(worldDelta);
+
+      const canvasPoint = getCanvasPoint(event);
+      if (!canvasPoint) {
+        return;
+      }
+
+      setMeasureLabel(formatMeasureLabel(dragState.originWorld, canvasPoint));
+      setDragState((currentDragState) =>
+        currentDragState
+          ? {
+              ...currentDragState,
+              lastClient: { x: event.clientX, y: event.clientY },
+              lastWorld: canvasPoint,
+            }
+          : currentDragState,
+      );
+      return;
+    }
+
     const shouldPanCanvas =
       dragState.mode === "canvas-gesture" &&
       (dragState.isPanning ||
@@ -808,6 +889,8 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       onSnapSelectedToGrid();
     } else if (dragState.mode === "move-wire-node") {
       onCommitWireNodeEdit();
+    } else if (dragState.mode === "move-pin-text") {
+      onCommitPinTextEdit();
     } else if (wasPanGesture) {
       startInertia();
     } else if (dragState.mode === "canvas-gesture") {
@@ -1069,11 +1152,20 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
               instance={instance}
               schematicTextSize={schematicTextSize}
               selected={selectedIds.includes(instance.id)}
+              pinTextEditMode={symbolPinTextEditInstanceId === instance.id}
+              selectedPinText={
+                selectedPinText?.instanceId === instance.id
+                  ? { pinNumber: selectedPinText.pinNumber, kind: selectedPinText.kind }
+                  : undefined
+              }
               netHighlighted={
                 netHighlight ? isNetHighlighted(netHighlight, "symbol", instance.id) : false
               }
               onPointerDown={(event) => beginSelectionDrag(instance.id, event)}
               onLongPress={handleObjectLongPress(instance.id, "symbol")}
+              onPinTextPointerDown={(pinNumber, kind, event) =>
+                beginPinTextDrag(instance.id, pinNumber, kind, event)
+              }
               onPinPointerDown={
                 onPinPointerDown
                   ? (connection, event) => {
@@ -1116,6 +1208,11 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       {selectedSymbolName ? (
         <div className="pointer-events-none absolute left-4 top-4 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-base text-cyan-100">
           Tap to place {selectedSymbolName}
+        </div>
+      ) : null}
+      {symbolPinTextEditInstanceId ? (
+        <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100">
+          Pin label edit — tap a name or number, drag to move, rotate with the context menu
         </div>
       ) : null}
     </section>

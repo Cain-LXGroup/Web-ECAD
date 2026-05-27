@@ -699,12 +699,82 @@ function App() {
 
   const hasTransformableSelection = hasSymbolSelection || hasLabelSelection;
 
+  const singleSelectedSymbolId = useMemo(() => {
+    if (editor.state.selectedIds.length !== 1) {
+      return undefined;
+    }
+
+    const selectedId = editor.state.selectedIds[0];
+    return editor.state.project.symbols.some((symbol) => symbol.id === selectedId) ? selectedId : undefined;
+  }, [editor.state.project.symbols, editor.state.selectedIds]);
+
+  const isPinTextEditActive = Boolean(editor.state.symbolPinTextEditInstanceId);
+
   const selectContextActions = useMemo(() => {
     if (editor.state.activeTool !== "select" || editor.state.selectedIds.length === 0) {
       return [];
     }
 
-    return [
+    if (isPinTextEditActive) {
+      return [
+        {
+          id: "rotate-pin-text",
+          icon: "rotate" as const,
+          label: "Rotate pin label",
+          disabled: !editor.state.selectedPinText,
+          onClick: () => {
+            editor.rotateSelectedPinText();
+            setStatusMessage("Rotated the selected pin label.");
+          },
+        },
+        {
+          id: "done-pin-text-edit",
+          icon: "edit" as const,
+          label: "Done editing pin labels",
+          variant: "primary" as const,
+          onClick: () => {
+            editor.exitSymbolPinTextEdit();
+            setStatusMessage("Finished editing pin labels.");
+          },
+        },
+        {
+          id: "zoom-selection",
+          icon: "zoom" as const,
+          label: "Zoom to selection",
+          onClick: () => {
+            editor.fitToSelection(symbolIndex);
+            setStatusMessage("Zoomed to the current selection.");
+          },
+        },
+        {
+          id: "delete",
+          icon: "delete" as const,
+          label: "Delete",
+          onClick: () => {
+            editor.deleteSelected();
+            setStatusMessage("Deleted the selected object.");
+          },
+        },
+      ];
+    }
+
+    const actions = [
+      ...(singleSelectedSymbolId
+        ? [
+            {
+              id: "edit-pin-text",
+              icon: "edit" as const,
+              label: "Edit pin labels",
+              variant: "primary" as const,
+              onClick: () => {
+                editor.enterSymbolPinTextEdit(singleSelectedSymbolId);
+                setStatusMessage(
+                  "Pin label edit mode. Tap a pin name or number, drag to move, or use Rotate.",
+                );
+              },
+            },
+          ]
+        : []),
       {
         id: "rotate",
         icon: "rotate" as const,
@@ -729,7 +799,7 @@ function App() {
         id: "zoom-selection",
         icon: "zoom" as const,
         label: "Zoom to selection",
-        variant: "primary" as const,
+        variant: singleSelectedSymbolId ? undefined : ("primary" as const),
         onClick: () => {
           editor.fitToSelection(symbolIndex);
           setStatusMessage("Zoomed to the current selection.");
@@ -745,12 +815,18 @@ function App() {
         },
       },
     ];
+
+    return actions;
   }, [
     editor,
     editor.state.activeTool,
     editor.state.selectedIds.length,
+    editor.state.selectedPinText,
+    editor.state.symbolPinTextEditInstanceId,
     hasLabelSelection,
     hasTransformableSelection,
+    isPinTextEditActive,
+    singleSelectedSymbolId,
     symbolIndex,
   ]);
 
@@ -1142,6 +1218,8 @@ function App() {
             selectedIds={editor.state.selectedIds}
             netHighlight={netHighlight}
             selectedWireNode={editor.state.selectedWireNode}
+            symbolPinTextEditInstanceId={editor.state.symbolPinTextEditInstanceId}
+            selectedPinText={editor.state.selectedPinText}
             activeTool={editor.state.activeTool}
             placingSymbolId={editor.state.placingSymbolId}
             wireDraft={editor.state.wireDraft}
@@ -1155,6 +1233,10 @@ function App() {
             onMoveWireNode={editor.moveWireNode}
             onCommitWireNodeEdit={editor.commitWireNodeEdit}
             onRemoveWireNodeAt={editor.removeWireNodeAt}
+            onSelectPinText={editor.selectPinText}
+            onClearPinTextSelection={editor.clearPinTextSelection}
+            onMovePinText={editor.movePinTextByDelta}
+            onCommitPinTextEdit={editor.commitPinTextEdit}
             onMoveSelected={editor.moveSelected}
             onSnapSelectedToGrid={editor.snapSelectedToGrid}
             onPlaceSymbol={(symbolId, point) => {

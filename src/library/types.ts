@@ -94,6 +94,13 @@ export type SymbolFieldAnnotation = {
   hidden?: boolean;
 };
 
+export type PinTextKind = "name" | "number";
+
+export type PinTextAnnotations = {
+  name?: SymbolFieldAnnotation;
+  number?: SymbolFieldAnnotation;
+};
+
 export type SymbolInstance = {
   id: string;
   symbolId: string;
@@ -105,6 +112,8 @@ export type SymbolInstance = {
   mirrored: boolean;
   refAnnotation?: SymbolFieldAnnotation;
   valueAnnotation?: SymbolFieldAnnotation;
+  /** Per-pin text overrides keyed by pin number. */
+  pinTextAnnotations?: Record<string, PinTextAnnotations>;
 };
 
 export type WireConnection = {

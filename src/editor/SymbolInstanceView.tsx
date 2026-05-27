@@ -1,9 +1,10 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 import { useLongPress } from "../hooks/useLongPress";
-import { getPinBodyPoint, getPinDirection } from "../library/symbolGeometry";
+import { getPinBodyPoint } from "../library/symbolGeometry";
 import type {
   LibrarySymbol,
+  PinTextKind,
   SymbolFieldAnnotation,
   SymbolGraphic,
   SymbolInstance,
@@ -11,6 +12,7 @@ import type {
 } from "../library/types";
 import { formatSymbolFieldCaption } from "./symbolDisplay";
 import { DEFAULT_SCHEMATIC_TEXT_SIZE, scaleThemeFontSize } from "./schematicTextSizing";
+import { estimatePinTextHitSize, getPinTextLayout } from "./pinTextLayout";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 import { schematicColorVar } from "../theme/schematicTheme";
 
@@ -160,9 +162,16 @@ type SymbolInstanceViewProps = {
   schematicTextSize?: number;
   showPinLabels?: boolean;
   showFieldLabels?: boolean;
+  pinTextEditMode?: boolean;
+  selectedPinText?: { pinNumber: string; kind: PinTextKind };
   onPointerDown?: (event: ReactPointerEvent<SVGGElement>) => void;
   onLongPress?: (event: ReactPointerEvent<SVGElement>) => void;
   onPinPointerDown?: (connection: WireConnection, event: ReactPointerEvent<SVGCircleElement>) => void;
+  onPinTextPointerDown?: (
+    pinNumber: string,
+    kind: PinTextKind,
+    event: ReactPointerEvent<SVGRectElement>,
+  ) => void;
 };
 
 export const SymbolInstanceView = ({
@@ -173,9 +182,12 @@ export const SymbolInstanceView = ({
   schematicTextSize = DEFAULT_SCHEMATIC_TEXT_SIZE,
   showPinLabels = true,
   showFieldLabels = true,
+  pinTextEditMode = false,
+  selectedPinText,
   onPointerDown,
   onLongPress,
   onPinPointerDown,
+  onPinTextPointerDown,
 }: SymbolInstanceViewProps) => {
   console.info("[SymbolInstanceView] Rendering symbol instance", {
     instanceId: instance.id,
@@ -261,8 +273,8 @@ export const SymbolInstanceView = ({
           width={boundsWidth + 36}
           height={boundsHeight + 36}
           fill="none"
-          stroke={schematicColorVar("selection")}
-          strokeDasharray="18 10"
+          stroke={schematicColorVar(pinTextEditMode ? "netHighlight" : "selection")}
+          strokeDasharray={pinTextEditMode ? undefined : "18 10"}
           strokeWidth={3}
           rx={20}
         />
@@ -329,40 +341,87 @@ export const SymbolInstanceView = ({
       {showPinLabels
         ? symbol.pins
             .filter((pin) => !pin.hidden)
-            .map((pin) => {
-              const bodyPoint = getPinBodyPoint(pin);
-              const direction = getPinDirection(pin.orientation);
-              const nameX = bodyPoint.x + direction.x * 16;
-              const nameY = -(bodyPoint.y + direction.y * 16);
-              const numberX = pin.x - direction.x * 14;
-              const numberY = -(pin.y - direction.y * 14);
+            .flatMap((pin) => {
+              const pinAnnotations = instance.pinTextAnnotations?.[pin.number];
+              const entries: Array<{ kind: PinTextKind; text: string; fontSize: number; fill: string }> = [
+                {
+                  kind: "name",
+                  text: pin.name,
+                  fontSize: pinNameFontSize,
+                  fill: schematicColorVar("pinName"),
+                },
+                {
+                  kind: "number",
+                  text: pin.number,
+                  fontSize: pinNumberFontSize,
+                  fill: schematicColorVar("pinNumber"),
+                },
+              ];
 
-              return (
-                <g key={`${instance.id}-label-${pin.number}`}>
-                  <text
-                    x={nameX}
-                    y={nameY}
-                    fontSize={pinNameFontSize}
-                    fill={schematicColorVar("pinName")}
-                    fontFamily={kicadSchematicTheme.fontFamily}
-                    dominantBaseline="middle"
-                    textAnchor={direction.x > 0 ? "start" : direction.x < 0 ? "end" : "middle"}
-                  >
-                    {pin.name}
-                  </text>
-                  <text
-                    x={numberX}
-                    y={numberY}
-                    fontSize={pinNumberFontSize}
-                    fill={schematicColorVar("pinNumber")}
-                    fontFamily={kicadSchematicTheme.fontFamily}
-                    dominantBaseline="middle"
-                    textAnchor={direction.x > 0 ? "end" : direction.x < 0 ? "start" : "middle"}
-                  >
-                    {pin.number}
-                  </text>
-                </g>
-              );
+              return entries.map(({ kind, text, fontSize, fill }) => {
+                const layout = getPinTextLayout(pin, kind, pinAnnotations?.[kind]);
+                if (layout.hidden) {
+                  return null;
+                }
+
+                const hitSize = estimatePinTextHitSize(text, fontSize);
+                const isSelected =
+                  selectedPinText?.pinNumber === pin.number && selectedPinText?.kind === kind;
+                const hitX =
+                  layout.textAnchor === "end"
+                    ? layout.x - hitSize.width
+                    : layout.textAnchor === "middle"
+                      ? layout.x - hitSize.width / 2
+                      : layout.x;
+                const hitY = layout.y - hitSize.height / 2;
+
+                return (
+                  <g key={`${instance.id}-label-${pin.number}-${kind}`}>
+                    {isSelected ? (
+                      <rect
+                        x={hitX - 4}
+                        y={hitY - 4}
+                        width={hitSize.width + 8}
+                        height={hitSize.height + 8}
+                        fill="none"
+                        stroke={schematicColorVar("selection")}
+                        strokeDasharray="8 6"
+                        strokeWidth={2}
+                        rx={4}
+                        pointerEvents="none"
+                      />
+                    ) : null}
+                    <text
+                      x={layout.x}
+                      y={layout.y}
+                      fontSize={fontSize}
+                      fill={fill}
+                      fontFamily={kicadSchematicTheme.fontFamily}
+                      dominantBaseline="middle"
+                      textAnchor={layout.textAnchor}
+                      transform={layout.rotation ? `rotate(${layout.rotation} ${layout.x} ${layout.y})` : undefined}
+                      pointerEvents={pinTextEditMode ? "none" : undefined}
+                    >
+                      {text}
+                    </text>
+                    {pinTextEditMode && onPinTextPointerDown ? (
+                      <rect
+                        x={hitX}
+                        y={hitY}
+                        width={hitSize.width}
+                        height={hitSize.height}
+                        fill="transparent"
+                        stroke="transparent"
+                        style={{ cursor: "move" }}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          onPinTextPointerDown(pin.number, kind, event);
+                        }}
+                      />
+                    ) : null}
+                  </g>
+                );
+              });
             })
         : null}
 
