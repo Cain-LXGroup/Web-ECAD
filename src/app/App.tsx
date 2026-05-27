@@ -10,6 +10,7 @@ import { ProjectPanel } from "../components/ProjectPanel";
 import { Sidebar } from "../components/Sidebar";
 import { SymbolSearchPanel } from "../components/SymbolSearchPanel";
 import { Toolbar } from "../components/Toolbar";
+import { WireToolPalette } from "../components/WireToolPalette";
 import { WorkspaceMenu } from "../components/WorkspaceMenu";
 import { SchematicCanvas } from "../editor/SchematicCanvas";
 import { DEFAULT_GRID_SIZE } from "../editor/snapping";
@@ -682,6 +683,21 @@ function App() {
         </div>
 
         <div className="flex min-h-0 flex-col gap-4 pb-24 xl:pb-0">
+          {editor.state.activeTool === "wire" ? (
+            <WireToolPalette
+              canPlaceWire={Boolean(editor.state.wireDraft && editor.state.wireDraft.points.length >= 2)}
+              canCancelWire={Boolean(editor.state.wireDraft)}
+              onPlaceWire={() => {
+                editor.finishWire();
+                setStatusMessage("Placed the current wire.");
+              }}
+              onCancelWire={() => {
+                editor.cancelWire();
+                setStatusMessage("Cancelled the current wire draft.");
+              }}
+            />
+          ) : null}
+
           <SchematicCanvas
             project={editor.state.project}
             symbolIndex={symbolIndex}

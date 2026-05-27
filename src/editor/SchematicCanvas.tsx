@@ -3,6 +3,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SetStateAction,
   type WheelEvent as ReactWheelEvent,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -16,14 +17,28 @@ import type { Tool, WireDraftState } from "./useEditorState";
 import { getWireJunctionPoints } from "./wireRouting";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 import { WireView } from "./WireView";
-
-const VIEWPORT_WIDTH = 5000;
-const VIEWPORT_HEIGHT = 3500;
+import {
+  clientToWorld,
+  getClientToWorldScale,
+  getPinchMetrics,
+  getViewBox,
+  getViewportFromPinch,
+  getZoomAtClientPoint,
+} from "./canvasViewport";
 
 type DragState = {
   pointerId: number;
   mode: "move-selection" | "pan";
-  lastPoint: Point;
+  lastClient: Point;
+  lastWorld: Point;
+};
+
+type PinchGestureState = {
+  pointerIds: [number, number];
+  startDistance: number;
+  startMidpoint: Point;
+  startZoom: number;
+  startPan: Point;
 };
 
 type SchematicCanvasProps = {
@@ -46,12 +61,6 @@ type SchematicCanvasProps = {
   onAddTextNote: (text: string, point: Point) => void;
   onSetPan: Dispatch<SetStateAction<Point>>;
   onSetZoom: Dispatch<SetStateAction<number>>;
-};
-
-const clamp = (value: number, min: number, max: number): number => {
-  console.info("[SchematicCanvas] Clamping numeric value", { value, min, max });
-
-  return Math.min(Math.max(value, min), max);
 };
 
 const getWorldFillRect = (center: Point, viewWidth: number, viewHeight: number) => {
@@ -77,6 +86,10 @@ const promptForText = (variant: "label" | "text"): string | null => {
 
   const trimmedValue = value.trim();
   return trimmedValue.length > 0 ? trimmedValue : null;
+};
+
+const shouldCapturePointer = (event: ReactPointerEvent<SVGElement>): boolean => {
+  return event.pointerType === "touch" || event.pointerType === "pen";
 };
 
 export const SchematicCanvas = ({
@@ -107,60 +120,141 @@ export const SchematicCanvas = ({
   });
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const activePointersRef = useRef<Map<number, Point>>(new Map());
+  const pinchGestureRef = useRef<PinchGestureState | null>(null);
+  const zoomRef = useRef(zoom);
+  const panRef = useRef(pan);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
   const gridSize = project.gridSize ?? DEFAULT_GRID_SIZE;
 
-  const viewBox = useMemo(() => {
-    console.info("[SchematicCanvas] Calculating viewBox", { zoom, pan });
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
 
-    const width = VIEWPORT_WIDTH / zoom;
-    const height = VIEWPORT_HEIGHT / zoom;
+  useEffect(() => {
+    zoomRef.current = zoom;
+    panRef.current = pan;
+  }, [pan, zoom]);
 
-    return {
-      x: pan.x,
-      y: pan.y,
-      width,
-      height,
-    };
-  }, [pan.x, pan.y, zoom]);
+  const viewBox = useMemo(() => getViewBox(zoom, pan), [pan.x, pan.y, zoom]);
 
   const getCanvasPointFromClient = (clientX: number, clientY: number): Point | null => {
-    console.info("[SchematicCanvas] Translating client coordinates to SVG coordinates", {
-      clientX,
-      clientY,
-    });
-
     const svg = svgRef.current;
     if (!svg) {
       return null;
     }
 
-    const point = svg.createSVGPoint();
-    point.x = clientX;
-    point.y = clientY;
-
-    const matrix = svg.getScreenCTM();
-    if (!matrix) {
-      return null;
-    }
-
-    const transformedPoint = point.matrixTransform(matrix.inverse());
-    return {
-      x: transformedPoint.x,
-      y: transformedPoint.y,
-    };
+    const rect = svg.getBoundingClientRect();
+    return clientToWorld(clientX, clientY, rect, viewBox);
   };
 
   const getCanvasPoint = (event: ReactPointerEvent<SVGElement>): Point | null => {
-    console.info("[SchematicCanvas] Translating pointer event to SVG coordinates");
-
     return getCanvasPointFromClient(event.clientX, event.clientY);
+  };
+
+  const getSvgRect = () => svgRef.current?.getBoundingClientRect() ?? null;
+
+  const applyViewport = (nextPan: Point, nextZoom: number) => {
+    onSetPan(nextPan);
+    onSetZoom(nextZoom);
+  };
+
+  const beginPinchGesture = () => {
+    console.info("[SchematicCanvas] Beginning pinch gesture");
+
+    const pointers = [...activePointersRef.current.entries()].map(([pointerId, point]) => ({
+      pointerId,
+      point,
+    }));
+
+    if (pointers.length < 2) {
+      return;
+    }
+
+    const metrics = getPinchMetrics(pointers.map((entry) => entry.point));
+    if (!metrics || metrics.distance < 8) {
+      return;
+    }
+
+    const svg = svgRef.current;
+    const activeDrag = dragStateRef.current;
+    if (svg && activeDrag && svg.hasPointerCapture(activeDrag.pointerId)) {
+      try {
+        svg.releasePointerCapture(activeDrag.pointerId);
+      } catch {
+        // Pointer may already be released on some browsers.
+      }
+    }
+
+    setDragState(null);
+    pinchGestureRef.current = {
+      pointerIds: [pointers[0].pointerId, pointers[1].pointerId],
+      startDistance: metrics.distance,
+      startMidpoint: metrics.midpoint,
+      startZoom: zoomRef.current,
+      startPan: panRef.current,
+    };
+  };
+
+  const updatePinchGesture = () => {
+    const gesture = pinchGestureRef.current;
+    const svgRect = getSvgRect();
+    if (!gesture || !svgRect) {
+      return;
+    }
+
+    const pointerPoints = gesture.pointerIds
+      .map((pointerId) => activePointersRef.current.get(pointerId))
+      .filter((point): point is Point => Boolean(point));
+
+    if (pointerPoints.length < 2) {
+      return;
+    }
+
+    const metrics = getPinchMetrics(pointerPoints);
+    if (!metrics) {
+      return;
+    }
+
+    const nextViewport = getViewportFromPinch({
+      startZoom: gesture.startZoom,
+      startPan: gesture.startPan,
+      startMidpoint: gesture.startMidpoint,
+      startDistance: gesture.startDistance,
+      currentMidpoint: metrics.midpoint,
+      currentDistance: metrics.distance,
+      svgRect,
+    });
+
+    applyViewport(nextViewport.pan, nextViewport.zoom);
+  };
+
+  const endPinchGesture = () => {
+    if (pinchGestureRef.current) {
+      console.info("[SchematicCanvas] Ending pinch gesture");
+      pinchGestureRef.current = null;
+    }
+  };
+
+  const trackPointer = (event: ReactPointerEvent<SVGElement>) => {
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const untrackPointer = (event: ReactPointerEvent<SVGElement>) => {
+    activePointersRef.current.delete(event.pointerId);
+    if (activePointersRef.current.size < 2) {
+      endPinchGesture();
+    }
   };
 
   const beginSelectionDrag = (id: string, event: ReactPointerEvent<SVGElement>) => {
     console.info("[SchematicCanvas] Beginning selection drag", { id });
 
-    if (activeTool !== "select" || placingSymbolId) {
+    if (activeTool !== "select" || placingSymbolId || pinchGestureRef.current) {
       return;
     }
 
@@ -171,16 +265,41 @@ export const SchematicCanvas = ({
 
     onSelectObject(id);
     event.stopPropagation();
+
+    if (shouldCapturePointer(event)) {
+      event.preventDefault();
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragState({
       pointerId: event.pointerId,
       mode: "move-selection",
-      lastPoint: canvasPoint,
+      lastClient: { x: event.clientX, y: event.clientY },
+      lastWorld: canvasPoint,
     });
   };
 
   const handleCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
-    console.info("[SchematicCanvas] Handling canvas pointer down", { activeTool, placingSymbolId });
+    console.info("[SchematicCanvas] Handling canvas pointer down", {
+      activeTool,
+      placingSymbolId,
+      pointerType: event.pointerType,
+    });
+
+    if (shouldCapturePointer(event)) {
+      event.preventDefault();
+    }
+
+    trackPointer(event);
+
+    if (activePointersRef.current.size >= 2) {
+      beginPinchGesture();
+      return;
+    }
+
+    if (pinchGestureRef.current) {
+      return;
+    }
 
     const canvasPoint = getCanvasPoint(event);
     if (!canvasPoint) {
@@ -222,7 +341,8 @@ export const SchematicCanvas = ({
       setDragState({
         pointerId: event.pointerId,
         mode: "pan",
-        lastPoint: canvasPoint,
+        lastClient: { x: event.clientX, y: event.clientY },
+        lastWorld: canvasPoint,
       });
       return;
     }
@@ -231,45 +351,83 @@ export const SchematicCanvas = ({
   };
 
   const handleCanvasPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    trackPointer(event);
+
+    if (activePointersRef.current.size >= 2) {
+      if (!pinchGestureRef.current) {
+        beginPinchGesture();
+      }
+      updatePinchGesture();
+      return;
+    }
+
+    if (pinchGestureRef.current) {
+      return;
+    }
+
     if (!dragState || dragState.pointerId !== event.pointerId) {
       return;
     }
 
-    console.info("[SchematicCanvas] Handling pointer move drag", { mode: dragState.mode });
-
-    const canvasPoint = getCanvasPoint(event);
-    if (!canvasPoint) {
+    const svgRect = getSvgRect();
+    if (!svgRect) {
       return;
     }
 
-    const dx = canvasPoint.x - dragState.lastPoint.x;
-    const dy = canvasPoint.y - dragState.lastPoint.y;
+    const clientScale = getClientToWorldScale(viewBox, svgRect.width, svgRect.height);
+    const dxClient = event.clientX - dragState.lastClient.x;
+    const dyClient = event.clientY - dragState.lastClient.y;
 
     if (dragState.mode === "move-selection") {
-      onMoveSelected(dx, dy);
-    } else if (dragState.mode === "pan") {
-      onSetPan((currentPan) => ({
-        x: currentPan.x - dx,
-        y: currentPan.y - dy,
-      }));
+      const canvasPoint = getCanvasPoint(event);
+      if (!canvasPoint) {
+        return;
+      }
+
+      onMoveSelected(canvasPoint.x - dragState.lastWorld.x, canvasPoint.y - dragState.lastWorld.y);
+      setDragState((currentDragState) =>
+        currentDragState
+          ? {
+              ...currentDragState,
+              lastClient: { x: event.clientX, y: event.clientY },
+              lastWorld: canvasPoint,
+            }
+          : currentDragState,
+      );
+      return;
     }
 
-    setDragState((currentDragState) =>
-      currentDragState
-        ? {
-            ...currentDragState,
-            lastPoint: canvasPoint,
-          }
-        : currentDragState,
-    );
+    if (dragState.mode === "pan") {
+      onSetPan((currentPan) => ({
+        x: currentPan.x - dxClient * clientScale.x,
+        y: currentPan.y - dyClient * clientScale.y,
+      }));
+      setDragState((currentDragState) =>
+        currentDragState
+          ? {
+              ...currentDragState,
+              lastClient: { x: event.clientX, y: event.clientY },
+            }
+          : currentDragState,
+      );
+    }
   };
 
   const handleCanvasPointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) {
+    console.info("[SchematicCanvas] Handling pointer up", { pointerId: event.pointerId });
+
+    untrackPointer(event);
+
+    if (pinchGestureRef.current) {
+      if (activePointersRef.current.size < 2) {
+        endPinchGesture();
+      }
       return;
     }
 
-    console.info("[SchematicCanvas] Handling pointer up", { mode: dragState.mode });
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
 
     if (dragState.mode === "move-selection") {
       onSnapSelectedToGrid();
@@ -287,29 +445,50 @@ export const SchematicCanvas = ({
 
     event.preventDefault();
 
+    const svgRect = getSvgRect();
+    if (!svgRect) {
+      return;
+    }
+
+    const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
+    const nextViewport = getZoomAtClientPoint(
+      event.clientX,
+      event.clientY,
+      zoom,
+      pan,
+      zoomFactor,
+      svgRect,
+    );
+
+    applyViewport(nextViewport.pan, nextViewport.zoom);
+  };
+
+  useEffect(() => {
+    console.info("[SchematicCanvas] Attaching non-passive touch and wheel listeners");
+
     const svg = svgRef.current;
     if (!svg) {
-      return;
+      return undefined;
     }
 
-    const pointerPoint = getCanvasPointFromClient(event.clientX, event.clientY);
-    if (!pointerPoint) {
-      return;
-    }
+    const preventTouchScroll = (event: TouchEvent) => {
+      if (event.touches.length > 1) {
+        event.preventDefault();
+      }
+    };
 
-    const bounds = svg.getBoundingClientRect();
-    const relativeX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
-    const relativeY = bounds.height > 0 ? (event.clientY - bounds.top) / bounds.height : 0.5;
-    const nextZoom = clamp(zoom * (event.deltaY < 0 ? 1.1 : 0.9), 0.45, 2.8);
-    const nextViewBoxWidth = VIEWPORT_WIDTH / nextZoom;
-    const nextViewBoxHeight = VIEWPORT_HEIGHT / nextZoom;
+    const handleWheelCapture = (event: WheelEvent) => {
+      event.preventDefault();
+    };
 
-    onSetPan({
-      x: pointerPoint.x - relativeX * nextViewBoxWidth,
-      y: pointerPoint.y - relativeY * nextViewBoxHeight,
-    });
-    onSetZoom(nextZoom);
-  };
+    svg.addEventListener("touchmove", preventTouchScroll, { passive: false });
+    svg.addEventListener("wheel", handleWheelCapture, { passive: false });
+
+    return () => {
+      svg.removeEventListener("touchmove", preventTouchScroll);
+      svg.removeEventListener("wheel", handleWheelCapture);
+    };
+  }, []);
 
   const draftWire =
     wireDraft && wireDraft.points.length > 1 ? { id: "wire-draft", points: wireDraft.points } : undefined;
@@ -343,11 +522,15 @@ export const SchematicCanvas = ({
       style={{
         borderColor: "rgba(192, 112, 112, 0.28)",
         backgroundColor: kicadSchematicTheme.background,
+        touchAction: "none",
+        WebkitUserSelect: "none",
+        userSelect: "none",
       }}
     >
       <svg
         ref={svgRef}
-        className="h-full min-h-0 w-full touch-none"
+        className="h-full min-h-0 w-full"
+        style={{ touchAction: "none" }}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={handleCanvasPointerMove}
