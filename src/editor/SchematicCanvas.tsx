@@ -20,7 +20,9 @@ import { DEFAULT_GRID_SIZE } from "./snapping";
 import { SymbolInstanceView } from "./SymbolInstanceView";
 import { DEFAULT_SCHEMATIC_TEXT_SIZE } from "./schematicTextSizing";
 import type { SymbolTextSelection } from "../library/types";
-import type { ErcPinFocus, Tool, WireDraftState } from "./useEditorState";
+import type { BusDraftState, ErcPinFocus, Tool, WireDraftState } from "./useEditorState";
+import { BusView } from "./BusView";
+import { SheetPinView } from "./SheetPinView";
 import { getWireJunctionPoints } from "./wireRouting";
 import { schematicColorVar } from "../theme/schematicTheme";
 import { WireNodeHandles, type WireNodeSelection } from "./WireNodeHandles";
@@ -37,7 +39,8 @@ import { vibrateSnap } from "../lib/feedback";
 import { clientDeltaToWorldDelta, clientPointToWorld } from "./svgCoordinates";
 
 const TAP_DRAG_THRESHOLD_PX = 12;
-const isNetLabelTool = (tool: Tool): boolean => tool === "label-global" || tool === "label-sheet";
+const isNetLabelTool = (tool: Tool): boolean =>
+  tool === "label-global" || tool === "label-sheet" || tool === "label-hierarchical";
 
 const DOUBLE_TAP_MS = 320;
 const DOUBLE_TAP_DISTANCE_PX = 28;
@@ -46,7 +49,11 @@ const INERTIA_MIN_VELOCITY = 0.35;
 
 type CanvasTapAction =
   | { kind: "wire" }
+  | { kind: "bus" }
   | { kind: "label" }
+  | { kind: "bus-label" }
+  | { kind: "hierarchical-label" }
+  | { kind: "sheet-pin" }
   | { kind: "text" }
   | { kind: "clear-selection" };
 
@@ -88,6 +95,7 @@ type SchematicCanvasProps = {
   activeTool: Tool;
   placingSymbolId?: string;
   wireDraft?: WireDraftState;
+  busDraft?: BusDraftState;
   schematicTextSize?: number;
   getWirePreviewPoints?: (point: Point) => Point[] | undefined;
   zoom: number;
@@ -107,7 +115,11 @@ type SchematicCanvasProps = {
   onPlaceSymbol: (symbolId: string, point: Point) => void;
   onStartWire: (point: Point) => void;
   onAddWirePoint: (point: Point) => void;
+  onStartBus: (point: Point) => void;
+  onAddBusPoint: (point: Point) => void;
   onAddNetLabel: (text: string, point: Point) => void;
+  onAddBusLabel: (text: string, point: Point) => void;
+  onAddSheetPin: (name: string, point: Point) => void;
   onAddTextNote: (text: string, point: Point) => void;
   onSetPan: Dispatch<SetStateAction<Point>>;
   onSetZoom: Dispatch<SetStateAction<number>>;
@@ -115,7 +127,7 @@ type SchematicCanvasProps = {
   onDoubleTapFit?: () => void;
   onObjectLongPress?: (target: {
     objectId: string;
-    objectType: "symbol" | "wire" | "net-label" | "text-note";
+    objectType: "symbol" | "wire" | "bus" | "net-label" | "sheet-pin" | "text-note";
     clientX: number;
     clientY: number;
   }) => void;
@@ -168,6 +180,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     activeTool,
     placingSymbolId,
     wireDraft,
+    busDraft,
     schematicTextSize = DEFAULT_SCHEMATIC_TEXT_SIZE,
     getWirePreviewPoints,
     zoom,
@@ -187,7 +200,11 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     onPlaceSymbol,
     onStartWire,
     onAddWirePoint,
+    onStartBus,
+    onAddBusPoint,
     onAddNetLabel,
+    onAddBusLabel,
+    onAddSheetPin,
     onAddTextNote,
     onSetPan,
     onSetZoom,
@@ -450,7 +467,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
   };
 
   const handleObjectLongPress =
-    (objectId: string, objectType: "symbol" | "wire" | "net-label" | "text-note") =>
+    (objectId: string, objectType: "symbol" | "wire" | "bus" | "net-label" | "sheet-pin" | "text-note") =>
     (event: ReactPointerEvent<SVGElement>) => {
       onObjectLongPress?.({
         objectId,
@@ -608,10 +625,43 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
       return;
     }
 
+    if (action.kind === "bus") {
+      if (busDraft && busDraft.points.length > 0) {
+        onAddBusPoint(canvasPoint);
+      } else {
+        onStartBus(canvasPoint);
+      }
+      return;
+    }
+
     if (action.kind === "label") {
       const labelText = promptForText("label");
       if (labelText) {
         onAddNetLabel(labelText, canvasPoint);
+      }
+      return;
+    }
+
+    if (action.kind === "bus-label") {
+      const labelText = window.prompt("Enter bus notation (e.g. D[0..7])", "DATA[0..7]");
+      if (labelText?.trim()) {
+        onAddBusLabel(labelText.trim(), canvasPoint);
+      }
+      return;
+    }
+
+    if (action.kind === "hierarchical-label") {
+      const labelText = window.prompt("Enter hierarchical net name", "USB_D+");
+      if (labelText?.trim()) {
+        onAddNetLabel(labelText.trim(), canvasPoint);
+      }
+      return;
+    }
+
+    if (action.kind === "sheet-pin") {
+      const pinName = window.prompt("Enter sheet pin name", "USB_D+");
+      if (pinName?.trim()) {
+        onAddSheetPin(pinName.trim(), canvasPoint);
       }
       return;
     }
@@ -686,6 +736,26 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
     if (activeTool === "wire") {
       beginCanvasGesture(event, canvasPoint, { kind: "wire" });
+      return;
+    }
+
+    if (activeTool === "bus") {
+      beginCanvasGesture(event, canvasPoint, { kind: "bus" });
+      return;
+    }
+
+    if (activeTool === "label-bus") {
+      beginCanvasGesture(event, canvasPoint, { kind: "bus-label" });
+      return;
+    }
+
+    if (activeTool === "label-hierarchical") {
+      beginCanvasGesture(event, canvasPoint, { kind: "hierarchical-label" });
+      return;
+    }
+
+    if (activeTool === "sheet-pin") {
+      beginCanvasGesture(event, canvasPoint, { kind: "sheet-pin" });
       return;
     }
 
@@ -1090,6 +1160,17 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
           />
         ) : null}
 
+        {(project.buses ?? []).map((bus) => (
+          <BusView
+            key={bus.id}
+            bus={bus}
+            selected={selectedIds.includes(bus.id)}
+            netHighlighted={netHighlight ? isNetHighlighted(netHighlight, "bus", bus.id) : false}
+            onPointerDown={(event) => beginSelectionDrag(bus.id, event)}
+            onLongPress={handleObjectLongPress(bus.id, "bus")}
+          />
+        ))}
+
         {project.wires.map((wire) => (
           <WireView
             key={wire.id}
@@ -1115,6 +1196,9 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
 
         {draftWire ? <WireView wire={draftWire} dashed /> : null}
         {wirePreviewWire ? <WireView wire={wirePreviewWire} dashed /> : null}
+        {busDraft && busDraft.points.length > 1 ? (
+          <BusView bus={{ id: "bus-draft", text: "", points: busDraft.points }} />
+        ) : null}
 
         {project.netLabels.map((label) => (
           <LabelView
@@ -1126,6 +1210,17 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
             netHighlighted={netHighlight ? isNetHighlighted(netHighlight, "label", label.id) : false}
             onPointerDown={(event) => beginSelectionDrag(label.id, event)}
             onLongPress={handleObjectLongPress(label.id, "net-label")}
+          />
+        ))}
+
+        {(project.sheetPins ?? []).map((pin) => (
+          <SheetPinView
+            key={pin.id}
+            pin={pin}
+            schematicTextSize={schematicTextSize}
+            selected={selectedIds.includes(pin.id)}
+            netHighlighted={netHighlight ? isNetHighlighted(netHighlight, "sheet-pin", pin.id) : false}
+            onPointerDown={(event) => beginSelectionDrag(pin.id, event)}
           />
         ))}
 

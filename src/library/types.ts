@@ -156,6 +156,9 @@ export type Wire = {
 
 export type NetLabelScope = "global" | "sheet";
 
+/** KiCad-style label taxonomy for connectivity and rendering. */
+export type LabelKind = "local" | "global" | "sheet" | "bus" | "bus-member" | "hierarchical";
+
 export type NetLabel = {
   id: string;
   text: string;
@@ -164,6 +167,35 @@ export type NetLabel = {
   rotation: 0 | 90 | 180 | 270;
   mirrored?: boolean;
   labelScope?: NetLabelScope;
+  labelKind?: LabelKind;
+  /** Bus member labels reference the parent bus label id. */
+  busLabelId?: string;
+  /** Zero-based index within the bus range (e.g. D[0..7] → 0..7). */
+  busMemberIndex?: number;
+  pinConnection?: WireConnection;
+  wireId?: string;
+};
+
+/** Thick bus polyline (KiCad bus wire). */
+export type Bus = {
+  id: string;
+  /** Bus notation, e.g. `D[0..7]` or `DATA[0..15]`. */
+  text: string;
+  points: Point[];
+  wireId?: string;
+  pinConnection?: WireConnection;
+};
+
+export type SheetPinDirection = "input" | "output" | "bidirectional";
+
+/** Sheet port for hierarchical designs (connects across sheets by name). */
+export type SheetPin = {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  rotation: 0 | 90 | 180 | 270;
+  direction: SheetPinDirection;
   pinConnection?: WireConnection;
   wireId?: string;
 };
@@ -223,7 +255,9 @@ export type SchematicSheet = {
   name: string;
   symbols: SymbolInstance[];
   wires: Wire[];
+  buses: Bus[];
   netLabels: NetLabel[];
+  sheetPins: SheetPin[];
   textNotes: TextNote[];
 };
 
@@ -243,7 +277,9 @@ export type SchematicProject = {
   updatedAt: number;
   symbols: SymbolInstance[];
   wires: Wire[];
+  buses: Bus[];
   netLabels: NetLabel[];
+  sheetPins: SheetPin[];
   textNotes: TextNote[];
   ercSuppressions?: ErcSuppression[];
   gridSize: number;

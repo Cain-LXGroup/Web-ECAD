@@ -3,16 +3,24 @@ import type { BottomToolbarAction } from "../../app/routes";
 const KICAD_ICON_MAP: Record<BottomToolbarAction, string> = {
   select: "cursor",
   wire: "add_line",
+  bus: "add_line",
   "label-global": "add_label",
   "label-sheet": "add_label",
+  "label-hierarchical": "add_label",
+  "label-bus": "add_label",
+  "sheet-pin": "add_line",
   text: "text",
 };
 
 const KICAD_ICON_LABELS: Record<BottomToolbarAction, string> = {
   select: "Select",
   wire: "Wire",
+  bus: "Bus",
   "label-global": "Global net label",
   "label-sheet": "Sheet net label",
+  "label-hierarchical": "Hierarchical label",
+  "label-bus": "Bus label",
+  "sheet-pin": "Sheet pin",
   text: "Text",
 };
 

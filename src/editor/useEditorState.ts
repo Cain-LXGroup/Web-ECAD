@@ -2,18 +2,22 @@ import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState 
 import { v4 as uuidv4 } from "uuid";
 
 import type {
+  Bus,
   ErcViolation,
   LibrarySymbol,
   NetLabel,
   NetLabelScope,
   Point,
   SchematicProject,
+  SheetPin,
+  SheetPinDirection,
   SymbolInstance,
   TextNote,
   Wire,
   WireConnection,
   WireRoutingMode,
 } from "../library/types";
+import { unfoldBusOnSheet } from "./busUnfold";
 import {
   addSheetToProject,
   commitSheetContent,
@@ -58,7 +62,16 @@ import {
 } from "./symbolTextMutation";
 import type { SymbolTextSelection, SymbolTextTarget } from "../library/types";
 
-export type Tool = "select" | "wire" | "label-global" | "label-sheet" | "text";
+export type Tool =
+  | "select"
+  | "wire"
+  | "bus"
+  | "label-global"
+  | "label-sheet"
+  | "label-hierarchical"
+  | "label-bus"
+  | "sheet-pin"
+  | "text";
 
 export type WireDraftState = {
   points: Point[];
@@ -67,6 +80,12 @@ export type WireDraftState = {
   endConnection?: WireConnection;
   startWireId?: string;
   endWireId?: string;
+};
+
+export type BusDraftState = {
+  points: Point[];
+  wireId?: string;
+  pinConnection?: WireConnection;
 };
 
 export type SelectionMode = "replace" | "add" | "toggle";
@@ -88,6 +107,7 @@ export type EditorState = {
   pan: Point;
   placingSymbolId?: string;
   wireDraft?: WireDraftState;
+  busDraft?: BusDraftState;
   wireRoutingMode: WireRoutingMode;
   activeSheetId: string;
   labelPlacementScope: NetLabelScope;
@@ -96,7 +116,9 @@ export type EditorState = {
 type ClipboardPayload = {
   symbols: SymbolInstance[];
   wires: Wire[];
+  buses: Bus[];
   netLabels: NetLabel[];
+  sheetPins: SheetPin[];
   textNotes: TextNote[];
 };
 
@@ -157,6 +179,7 @@ export const useEditorState = (
   const [pan, setPanState] = useState<Point>({ x: 0, y: 0 });
   const [placingSymbolId, setPlacingSymbolIdState] = useState<string | undefined>(undefined);
   const [wireDraft, setWireDraft] = useState<WireDraftState | undefined>(undefined);
+  const [busDraft, setBusDraft] = useState<BusDraftState | undefined>(undefined);
   const [wireRoutingMode, setWireRoutingModeState] = useState<WireRoutingMode>("auto");
   const [historyPast, setHistoryPast] = useState<EditorHistorySnapshot[]>([]);
   const [historyFuture, setHistoryFuture] = useState<EditorHistorySnapshot[]>([]);
@@ -314,6 +337,7 @@ export const useEditorState = (
       pan,
       placingSymbolId,
       wireDraft,
+      busDraft,
       wireRoutingMode,
       activeSheetId,
       labelPlacementScope,
@@ -321,6 +345,7 @@ export const useEditorState = (
     [
       activeSheetId,
       activeTool,
+      busDraft,
       labelPlacementScope,
       pan,
       placingSymbolId,
@@ -355,7 +380,9 @@ export const useEditorState = (
         return commitSheetContent(currentProject, activeSheetId, {
           symbols: updatedSheet.symbols,
           wires: updatedSheet.wires,
+          buses: updatedSheet.buses ?? [],
           netLabels: updatedSheet.netLabels,
+          sheetPins: updatedSheet.sheetPins ?? [],
           textNotes: updatedSheet.textNotes,
         });
       });
@@ -502,7 +529,9 @@ export const useEditorState = (
         (currentProject) => {
           const nextSymbols = [...currentProject.symbols];
           const nextWires = [...currentProject.wires];
+          const nextBuses = [...(currentProject.buses ?? [])];
           const nextLabels = [...currentProject.netLabels];
+          const nextSheetPins = [...(currentProject.sheetPins ?? [])];
           const nextNotes = [...currentProject.textNotes];
 
           for (const selectedId of selectedIds) {
@@ -537,6 +566,20 @@ export const useEditorState = (
               continue;
             }
 
+            const selectedBus = (currentProject.buses ?? []).find((bus) => bus.id === selectedId);
+            if (selectedBus) {
+              const duplicateId = `bus-${uuidv4()}`;
+              newIds.push(duplicateId);
+              nextBuses.push({
+                ...selectedBus,
+                id: duplicateId,
+                points: movePoints(selectedBus.points, offset, offset),
+                wireId: undefined,
+                pinConnection: undefined,
+              });
+              continue;
+            }
+
             const selectedLabel = currentProject.netLabels.find((label) => label.id === selectedId);
             if (selectedLabel) {
               const duplicateId = `label-${uuidv4()}`;
@@ -546,6 +589,21 @@ export const useEditorState = (
                 id: duplicateId,
                 x: selectedLabel.x + offset,
                 y: selectedLabel.y + offset,
+                pinConnection: undefined,
+                wireId: undefined,
+              });
+              continue;
+            }
+
+            const selectedSheetPin = (currentProject.sheetPins ?? []).find((pin) => pin.id === selectedId);
+            if (selectedSheetPin) {
+              const duplicateId = `sheetpin-${uuidv4()}`;
+              newIds.push(duplicateId);
+              nextSheetPins.push({
+                ...selectedSheetPin,
+                id: duplicateId,
+                x: selectedSheetPin.x + offset,
+                y: selectedSheetPin.y + offset,
                 pinConnection: undefined,
                 wireId: undefined,
               });
@@ -571,7 +629,9 @@ export const useEditorState = (
             ...currentProject,
             symbols: nextSymbols,
             wires: nextWires,
+            buses: nextBuses,
             netLabels: nextLabels,
+            sheetPins: nextSheetPins,
             textNotes: nextNotes,
           };
         },
@@ -585,6 +645,8 @@ export const useEditorState = (
     setTool: (tool: Tool) => {
       console.info("[useEditorState] Setting active tool", { tool });
       setActiveTool(tool);
+      setWireDraft(undefined);
+      setBusDraft(undefined);
       if (tool === "label-global") {
         setLabelPlacementScope("global");
       } else if (tool === "label-sheet") {
@@ -622,7 +684,9 @@ export const useEditorState = (
           activeSheetId: sheetId,
           symbols: view.symbols,
           wires: view.wires,
+          buses: view.buses,
           netLabels: view.netLabels,
+          sheetPins: view.sheetPins,
           textNotes: view.textNotes,
         };
       });
@@ -630,6 +694,7 @@ export const useEditorState = (
       setSelectedIds([]);
       setSelectedWireNode(undefined);
       setWireDraft(undefined);
+      setBusDraft(undefined);
     },
     addSheet: () => {
       console.info("[useEditorState] Adding schematic sheet");
@@ -865,6 +930,12 @@ export const useEditorState = (
         wires: currentProject.wires.map((wire) =>
           selectedIds.includes(wire.id) ? { ...wire, points: movePoints(wire.points, dx, dy) } : wire,
         ),
+        buses: (currentProject.buses ?? []).map((bus) =>
+          selectedIds.includes(bus.id) ? { ...bus, points: movePoints(bus.points, dx, dy) } : bus,
+        ),
+        sheetPins: (currentProject.sheetPins ?? []).map((pin) =>
+          selectedIds.includes(pin.id) ? { ...pin, x: pin.x + dx, y: pin.y + dy } : pin,
+        ),
         netLabels: currentProject.netLabels.map((label) =>
           selectedIds.includes(label.id) ? { ...label, x: label.x + dx, y: label.y + dy } : label,
         ),
@@ -891,6 +962,14 @@ export const useEditorState = (
           selectedIds.includes(wire.id)
             ? { ...wire, points: snapPoints(wire.points, currentProject.gridSize) }
             : wire,
+        ),
+        buses: (currentProject.buses ?? []).map((bus) =>
+          selectedIds.includes(bus.id) ? { ...bus, points: snapPoints(bus.points, currentProject.gridSize) } : bus,
+        ),
+        sheetPins: (currentProject.sheetPins ?? []).map((pin) =>
+          selectedIds.includes(pin.id)
+            ? { ...pin, ...snapPoint({ x: pin.x, y: pin.y }, currentProject.gridSize) }
+            : pin,
         ),
         netLabels: currentProject.netLabels.map((label) =>
           selectedIds.includes(label.id)
@@ -1288,7 +1367,9 @@ export const useEditorState = (
         ...currentProject,
         symbols: currentProject.symbols.filter((symbol) => !selectedIds.includes(symbol.id)),
         wires: currentProject.wires.filter((wire) => !selectedIds.includes(wire.id)),
+        buses: (currentProject.buses ?? []).filter((bus) => !selectedIds.includes(bus.id)),
         netLabels: currentProject.netLabels.filter((label) => !selectedIds.includes(label.id)),
+        sheetPins: (currentProject.sheetPins ?? []).filter((pin) => !selectedIds.includes(pin.id)),
         textNotes: currentProject.textNotes.filter((note) => !selectedIds.includes(note.id)),
       }));
 
@@ -1491,7 +1572,7 @@ export const useEditorState = (
       return routeOrthogonalSegment(wireDraft.points, nextAnchor.point);
     },
     addNetLabel: (text: string, point: Point) => {
-      console.info("[useEditorState] Adding net label", { text, point, labelPlacementScope });
+      console.info("[useEditorState] Adding net label", { text, point, labelPlacementScope, activeTool });
 
       const labelId = `label-${uuidv4()}`;
       const sheetContent = getProjectView(project, activeSheetId);
@@ -1511,6 +1592,13 @@ export const useEditorState = (
         : offsetNetLabelFromAnchor(anchor.point, placement.rotation, placement.mirrored, labelOffset);
       const snapped = snapPoint(positioned, gridSize);
 
+      const labelKind =
+        activeTool === "label-hierarchical"
+          ? "hierarchical"
+          : labelPlacementScope === "global"
+            ? "global"
+            : "sheet";
+
       applyProjectUpdate("addNetLabel", (currentProject) => ({
         ...currentProject,
         netLabels: [
@@ -1520,7 +1608,8 @@ export const useEditorState = (
             text,
             rotation: placement.rotation,
             mirrored: placement.mirrored,
-            labelScope: labelPlacementScope,
+            labelScope: labelKind === "hierarchical" ? "sheet" : labelPlacementScope,
+            labelKind,
             x: snapped.x,
             y: snapped.y,
             pinConnection: anchor.pinConnection,
@@ -1530,6 +1619,169 @@ export const useEditorState = (
       }));
 
       setSelectedIds([labelId]);
+    },
+    addBusLabel: (text: string, point: Point) => {
+      console.info("[useEditorState] Adding bus label", { text, point });
+
+      const labelId = `label-bus-${uuidv4()}`;
+      const sheetContent = getProjectView(project, activeSheetId);
+      const gridSize = sheetContent.gridSize || DEFAULT_GRID_SIZE;
+      const anchor = resolveLabelAnchor(point, sheetContent, symbolIndex, gridSize);
+      const placement = resolveNetLabelPlacement(sheetContent, symbolIndex, anchor.pinConnection);
+      const labelOffset = Math.max(gridSize * 0.9, 36);
+      const positioned = anchor.pinConnection
+        ? resolvePinnedNetLabelPoint(
+            sheetContent,
+            symbolIndex,
+            anchor.pinConnection,
+            placement.rotation,
+            placement.mirrored,
+            gridSize,
+          ) ?? anchor.point
+        : offsetNetLabelFromAnchor(anchor.point, placement.rotation, placement.mirrored, labelOffset);
+      const snapped = snapPoint(positioned, gridSize);
+
+      applyProjectUpdate("addBusLabel", (currentProject) => ({
+        ...currentProject,
+        netLabels: [
+          ...currentProject.netLabels,
+          {
+            id: labelId,
+            text,
+            rotation: placement.rotation,
+            mirrored: placement.mirrored,
+            labelKind: "bus",
+            labelScope: "sheet",
+            x: snapped.x,
+            y: snapped.y,
+            pinConnection: anchor.pinConnection,
+            wireId: anchor.wireId,
+          },
+        ],
+      }));
+
+      setSelectedIds([labelId]);
+    },
+    addSheetPin: (name: string, point: Point, direction: SheetPinDirection = "bidirectional") => {
+      console.info("[useEditorState] Adding sheet pin", { name, point, direction });
+
+      const pinId = `sheetpin-${uuidv4()}`;
+      const sheetContent = getProjectView(project, activeSheetId);
+      const gridSize = sheetContent.gridSize || DEFAULT_GRID_SIZE;
+      const anchor = resolveLabelAnchor(point, sheetContent, symbolIndex, gridSize);
+      const snapped = snapPoint(anchor.point, gridSize);
+
+      applyProjectUpdate("addSheetPin", (currentProject) => ({
+        ...currentProject,
+        sheetPins: [
+          ...(currentProject.sheetPins ?? []),
+          {
+            id: pinId,
+            name,
+            x: snapped.x,
+            y: snapped.y,
+            rotation: 0,
+            direction,
+            pinConnection: anchor.pinConnection,
+            wireId: anchor.wireId,
+          },
+        ],
+      }));
+
+      setSelectedIds([pinId]);
+    },
+    startBus: (point: Point) => {
+      console.info("[useEditorState] Starting bus draft", { point });
+
+      const nextAnchor = resolveWireAnchor(point, project);
+      setBusDraft({
+        points: [nextAnchor.point],
+        wireId: nextAnchor.wireId,
+        pinConnection: nextAnchor.connection,
+      });
+    },
+    addBusPoint: (point: Point) => {
+      console.info("[useEditorState] Adding bus draft point", { point });
+
+      setBusDraft((current) => {
+        if (!current || current.points.length === 0) {
+          return current;
+        }
+
+        const nextAnchor = resolveWireAnchor(point, project);
+        const lastPoint = current.points[current.points.length - 1];
+        const nextPoint =
+          lastPoint.x === nextAnchor.point.x || lastPoint.y === nextAnchor.point.y
+            ? nextAnchor.point
+            : {
+                x: nextAnchor.point.x,
+                y: lastPoint.y,
+              };
+
+        return {
+          ...current,
+          points: [...current.points, nextPoint, nextAnchor.point],
+          wireId: nextAnchor.wireId ?? current.wireId,
+          pinConnection: nextAnchor.connection ?? current.pinConnection,
+        };
+      });
+    },
+    commitBus: (text: string) => {
+      console.info("[useEditorState] Committing bus draft", { text });
+
+      if (!busDraft || busDraft.points.length < 2) {
+        setBusDraft(undefined);
+        return undefined;
+      }
+
+      const busId = `bus-${uuidv4()}`;
+      const busText = text.trim();
+
+      applyProjectUpdate("commitBus", (currentProject) => ({
+        ...currentProject,
+        buses: [
+          ...(currentProject.buses ?? []),
+          {
+            id: busId,
+            text: busText,
+            points: busDraft.points,
+            wireId: busDraft.wireId,
+            pinConnection: busDraft.pinConnection,
+          },
+        ],
+      }));
+
+      setBusDraft(undefined);
+      setSelectedIds([busId]);
+      return busId;
+    },
+    cancelBus: () => {
+      console.info("[useEditorState] Cancelling bus draft");
+      setBusDraft(undefined);
+    },
+    unfoldBus: (busId: string) => {
+      console.info("[useEditorState] Unfolding bus", { busId });
+
+      const sheetContent = getProjectView(project, activeSheetId);
+      const bus = (sheetContent.buses ?? []).find((candidate) => candidate.id === busId);
+      if (!bus) {
+        return { ok: false, message: "Bus not found." };
+      }
+
+      applyProjectUpdate("unfoldBus", (currentProject) => {
+        const targetBus = (currentProject.buses ?? []).find((candidate) => candidate.id === busId);
+        if (!targetBus) {
+          return currentProject;
+        }
+
+        return unfoldBusOnSheet(currentProject, symbolIndex, targetBus).project;
+      });
+      const preview = unfoldBusOnSheet(sheetContent, symbolIndex, bus);
+      if (preview.memberLabelIds.length > 0) {
+        setSelectedIds(preview.memberLabelIds);
+      }
+
+      return { ok: true, message: preview.message };
     },
     copySelection: () => {
       console.info("[useEditorState] Copying selection to clipboard", { selectedIds });
@@ -1542,14 +1794,20 @@ export const useEditorState = (
       clipboardRef.current = {
         symbols: sheetContent.symbols.filter((symbol) => selectedIds.includes(symbol.id)),
         wires: sheetContent.wires.filter((wire) => selectedIds.includes(wire.id)),
+        buses: (sheetContent.buses ?? []).filter((bus) => selectedIds.includes(bus.id)),
         netLabels: sheetContent.netLabels.filter((label) => selectedIds.includes(label.id)),
+        sheetPins: (sheetContent.sheetPins ?? []).filter((pin) => selectedIds.includes(pin.id)),
         textNotes: sheetContent.textNotes.filter((note) => selectedIds.includes(note.id)),
       };
 
-      return clipboardRef.current.symbols.length > 0 ||
+      return (
+        clipboardRef.current.symbols.length > 0 ||
         clipboardRef.current.wires.length > 0 ||
+        clipboardRef.current.buses.length > 0 ||
         clipboardRef.current.netLabels.length > 0 ||
-        clipboardRef.current.textNotes.length > 0;
+        clipboardRef.current.sheetPins.length > 0 ||
+        clipboardRef.current.textNotes.length > 0
+      );
     },
     cutSelection: () => {
       console.info("[useEditorState] Cutting selection", { selectedIds });
@@ -1562,7 +1820,9 @@ export const useEditorState = (
       clipboardRef.current = {
         symbols: sheetContent.symbols.filter((symbol) => selectedIds.includes(symbol.id)),
         wires: sheetContent.wires.filter((wire) => selectedIds.includes(wire.id)),
+        buses: (sheetContent.buses ?? []).filter((bus) => selectedIds.includes(bus.id)),
         netLabels: sheetContent.netLabels.filter((label) => selectedIds.includes(label.id)),
+        sheetPins: (sheetContent.sheetPins ?? []).filter((pin) => selectedIds.includes(pin.id)),
         textNotes: sheetContent.textNotes.filter((note) => selectedIds.includes(note.id)),
       };
 
@@ -1570,7 +1830,9 @@ export const useEditorState = (
         ...currentProject,
         symbols: currentProject.symbols.filter((symbol) => !selectedIds.includes(symbol.id)),
         wires: currentProject.wires.filter((wire) => !selectedIds.includes(wire.id)),
+        buses: (currentProject.buses ?? []).filter((bus) => !selectedIds.includes(bus.id)),
         netLabels: currentProject.netLabels.filter((label) => !selectedIds.includes(label.id)),
+        sheetPins: (currentProject.sheetPins ?? []).filter((pin) => !selectedIds.includes(pin.id)),
         textNotes: currentProject.textNotes.filter((note) => !selectedIds.includes(note.id)),
       }));
 
@@ -1593,7 +1855,9 @@ export const useEditorState = (
       applyProjectUpdate("pasteSelection", (currentProject) => {
         const nextSymbols = [...currentProject.symbols];
         const nextWires = [...currentProject.wires];
+        const nextBuses = [...(currentProject.buses ?? [])];
         const nextLabels = [...currentProject.netLabels];
+        const nextSheetPins = [...(currentProject.sheetPins ?? [])];
         const nextNotes = [...currentProject.textNotes];
 
         for (const symbol of payload.symbols) {
@@ -1623,6 +1887,18 @@ export const useEditorState = (
           });
         }
 
+        for (const bus of payload.buses) {
+          const duplicateId = `bus-${uuidv4()}`;
+          newIds.push(duplicateId);
+          nextBuses.push({
+            ...bus,
+            id: duplicateId,
+            points: movePoints(bus.points, offset, offset),
+            wireId: undefined,
+            pinConnection: undefined,
+          });
+        }
+
         for (const label of payload.netLabels) {
           const duplicateId = `label-${uuidv4()}`;
           newIds.push(duplicateId);
@@ -1631,6 +1907,19 @@ export const useEditorState = (
             id: duplicateId,
             x: label.x + offset,
             y: label.y + offset,
+            pinConnection: undefined,
+            wireId: undefined,
+          });
+        }
+
+        for (const pin of payload.sheetPins) {
+          const duplicateId = `sheetpin-${uuidv4()}`;
+          newIds.push(duplicateId);
+          nextSheetPins.push({
+            ...pin,
+            id: duplicateId,
+            x: pin.x + offset,
+            y: pin.y + offset,
             pinConnection: undefined,
             wireId: undefined,
           });
@@ -1653,7 +1942,9 @@ export const useEditorState = (
           ...currentProject,
           symbols: nextSymbols,
           wires: nextWires,
+          buses: nextBuses,
           netLabels: nextLabels,
+          sheetPins: nextSheetPins,
           textNotes: nextNotes,
         };
       });
@@ -1665,6 +1956,7 @@ export const useEditorState = (
       return newIds.length > 0;
     },
     hasClipboard: () => Boolean(clipboardRef.current),
+    fullProject: project,
     addTextNote: (text: string, point: Point) => {
       console.info("[useEditorState] Adding text note", { text, point });
 

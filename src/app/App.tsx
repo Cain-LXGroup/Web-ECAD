@@ -10,6 +10,8 @@ import { SchematicColorsPanel } from "../components/SchematicColorsPanel";
 import { UndoRedoRail } from "../components/UndoRedoRail";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { ErcPanel } from "../components/ErcPanel";
+import { BusToolPalette } from "../components/BusToolPalette";
+import { HierarchyPanel } from "../components/HierarchyPanel";
 import { ExportPanel } from "../components/ExportPanel";
 import { ImportPanel, type ImportPanelStatus } from "../components/ImportPanel";
 import { ProjectPanel } from "../components/ProjectPanel";
@@ -66,7 +68,9 @@ const createBlankProject = (name: string): SchematicProject => {
     updatedAt: timestamp,
     symbols: defaultSheet.symbols,
     wires: defaultSheet.wires,
+    buses: defaultSheet.buses,
     netLabels: defaultSheet.netLabels,
+    sheetPins: defaultSheet.sheetPins,
     textNotes: defaultSheet.textNotes,
     gridSize: DEFAULT_GRID_SIZE,
     sheets: [defaultSheet],
@@ -152,7 +156,9 @@ function App() {
   const emptyNetHighlight = useMemo<NetHighlightSet>(
     () => ({
       wireIds: new Set(),
+      busIds: new Set(),
       labelIds: new Set(),
+      sheetPinIds: new Set(),
       symbolInstanceIds: new Set(),
     }),
     [],
@@ -163,9 +169,15 @@ function App() {
       return emptyNetHighlight;
     }
 
-    return computeNetHighlight(editor.state.project, symbolIndex, editor.state.selectedIds);
+    return computeNetHighlight(
+      editor.state.project,
+      symbolIndex,
+      editor.state.selectedIds,
+      editor.fullProject,
+    );
   }, [
     appSettings.netHighlightEnabled,
+    editor.fullProject,
     editor.state.project,
     editor.state.selectedIds,
     emptyNetHighlight,
@@ -327,6 +339,24 @@ function App() {
         type: "wire" as const,
         name: "Wire",
         detail: `${wire.points.length} points, ${wire.routingMode ?? "manual"} routing`,
+      };
+    }
+
+    const bus = (editor.state.project.buses ?? []).find((currentBus) => currentBus.id === selectedId);
+    if (bus) {
+      return {
+        type: "wire" as const,
+        name: bus.text,
+        detail: `Bus · ${bus.points.length} points`,
+      };
+    }
+
+    const sheetPin = (editor.state.project.sheetPins ?? []).find((pin) => pin.id === selectedId);
+    if (sheetPin) {
+      return {
+        type: "net-label" as const,
+        name: sheetPin.name,
+        detail: `Sheet pin · ${sheetPin.direction}`,
       };
     }
 
@@ -716,6 +746,26 @@ function App() {
         return;
       }
 
+      if (actionId === "bus") {
+        setStatusMessage("Drawing bus (thick line). Tap canvas corners, then Place Bus.");
+        return;
+      }
+
+      if (actionId === "label-bus") {
+        setStatusMessage("Placing bus labels (⊏⊐), e.g. D[0..7].");
+        return;
+      }
+
+      if (actionId === "label-hierarchical") {
+        setStatusMessage("Placing hierarchical labels (⇄) for cross-sheet nets.");
+        return;
+      }
+
+      if (actionId === "sheet-pin") {
+        setStatusMessage("Placing sheet pins. Use the same name on each sheet to connect nets.");
+        return;
+      }
+
       setStatusMessage(`Switched to ${actionId} tool.`);
     },
     [editor],
@@ -736,6 +786,15 @@ function App() {
       ),
     [editor.state.project.netLabels, editor.state.selectedIds],
   );
+
+  const selectedBusId = useMemo(() => {
+    if (editor.state.selectedIds.length !== 1) {
+      return undefined;
+    }
+
+    const selectedId = editor.state.selectedIds[0];
+    return (editor.state.project.buses ?? []).some((bus) => bus.id === selectedId) ? selectedId : undefined;
+  }, [editor.state.project.buses, editor.state.selectedIds]);
 
   const hasTransformableSelection = hasSymbolSelection || hasLabelSelection;
 
@@ -968,6 +1027,8 @@ function App() {
         onNetHighlightEnabledChange={appSettings.setNetHighlightEnabled}
       />
 
+      <HierarchyPanel fullProject={editor.fullProject} />
+
       <ErcPanel
         violations={ercViolations}
         hasRun={ercReport !== null}
@@ -1051,6 +1112,45 @@ function App() {
           ))}
         </div>
       </GlassPanel>
+
+      {editor.state.activeTool === "bus" ? (
+        <GlassPanel>
+          <h2 className={chromeTitle}>Bus</h2>
+          <p className={`mt-2 ${chromeBody}`}>
+            Draw a thick bus line, name it with range notation (e.g. DATA[0..7]), then unfold into member labels.
+          </p>
+          <div className="mt-3">
+            <BusToolPalette
+              canPlaceBus={Boolean(editor.state.busDraft && editor.state.busDraft.points.length >= 2)}
+              canCancelBus={Boolean(editor.state.busDraft)}
+              canUnfoldBus={Boolean(selectedBusId)}
+              onPlaceBus={() => {
+                const busName = window.prompt("Bus notation (e.g. D[0..7])", "DATA[0..7]");
+                if (!busName?.trim()) {
+                  return;
+                }
+
+                const busId = editor.commitBus(busName.trim());
+                if (busId) {
+                  setStatusMessage(`Placed bus ${busName.trim()}.`);
+                }
+              }}
+              onCancelBus={() => {
+                editor.cancelBus();
+                setStatusMessage("Cancelled bus draft.");
+              }}
+              onUnfoldBus={() => {
+                if (!selectedBusId) {
+                  return;
+                }
+
+                const result = editor.unfoldBus(selectedBusId);
+                setStatusMessage(result.message);
+              }}
+            />
+          </div>
+        </GlassPanel>
+      ) : null}
 
       <GlassPanel className="hidden xl:block">
         <h2 className={chromeTitle}>Wire Draft</h2>
@@ -1363,6 +1463,7 @@ function App() {
             activeTool={editor.state.activeTool}
             placingSymbolId={editor.state.placingSymbolId}
             wireDraft={editor.state.wireDraft}
+            busDraft={editor.state.busDraft}
             schematicTextSize={appSettings.schematicTextSize}
             getWirePreviewPoints={editor.getWirePreviewPoints}
             zoom={editor.state.zoom}
@@ -1385,7 +1486,11 @@ function App() {
             }}
             onStartWire={editor.startWire}
             onAddWirePoint={editor.addWirePoint}
+            onStartBus={editor.startBus}
+            onAddBusPoint={editor.addBusPoint}
             onAddNetLabel={editor.addNetLabel}
+            onAddBusLabel={editor.addBusLabel}
+            onAddSheetPin={(name, point) => editor.addSheetPin(name, point, "bidirectional")}
             onAddTextNote={editor.addTextNote}
             onSetPan={editor.setPan}
             onSetZoom={editor.setZoom}

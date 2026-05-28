@@ -44,14 +44,46 @@ export const LabelView = ({
   });
 
   const netLabel = variant === "net-label" ? (item as NetLabel) : undefined;
-  const scopeSuffix =
-    netLabel?.labelScope === "global" ? " ⬡" : netLabel?.labelScope === "sheet" ? " ▫" : "";
-  const displayText = variant === "net-label" ? `${item.text}${scopeSuffix}` : item.text;
+  const kindSuffix = (() => {
+    if (!netLabel) {
+      return "";
+    }
+
+    switch (netLabel.labelKind) {
+      case "bus":
+        return " ⊏⊐";
+      case "bus-member":
+        return " ⊏";
+      case "hierarchical":
+        return " ⇄";
+      case "global":
+        return " ⬡";
+      case "sheet":
+        return " ▫";
+      default:
+        return netLabel.labelScope === "global" ? " ⬡" : netLabel.labelScope === "sheet" ? " ▫" : "";
+    }
+  })();
+
+  const displayText = variant === "net-label" ? `${item.text}${kindSuffix}` : item.text;
   const rotation = hasRotation(item) ? item.rotation : 0;
   const mirrored = netLabel?.mirrored ?? false;
 
-  const fill =
-    variant === "net-label" ? schematicColorVar("netLabel") : schematicColorVar("textNote");
+  const fill = (() => {
+    if (variant !== "net-label") {
+      return schematicColorVar("textNote");
+    }
+
+    if (netLabel?.labelKind === "bus" || netLabel?.labelKind === "bus-member") {
+      return schematicColorVar("busStroke");
+    }
+
+    if (netLabel?.labelKind === "hierarchical") {
+      return schematicColorVar("hierarchicalPin");
+    }
+
+    return schematicColorVar("netLabel");
+  })();
   const fontSize =
     variant === "net-label"
       ? getNetLabelFontSize(schematicTextSize)

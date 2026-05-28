@@ -1,19 +1,31 @@
 import { v4 as uuidv4 } from "uuid";
 
-import type { SchematicProject, SchematicSheet } from "../library/types";
+import type { Bus, SchematicProject, SchematicSheet, SheetPin } from "../library/types";
 
 export const DEFAULT_SHEET_ID = "sheet-default";
+
+const emptyBuses = (): Bus[] => [];
+const emptySheetPins = (): SheetPin[] => [];
+
+const normalizeSheet = (sheet: SchematicSheet): SchematicSheet => ({
+  ...sheet,
+  buses: sheet.buses ?? emptyBuses(),
+  sheetPins: sheet.sheetPins ?? emptySheetPins(),
+});
 
 export const normalizeProject = (project: SchematicProject): SchematicProject => {
   console.info("[projectSheets] Normalizing project sheet structure", { projectId: project.id });
 
   if (project.sheets && project.sheets.length > 0) {
-    const activeSheet =
-      project.sheets.find((sheet) => sheet.id === project.activeSheetId) ?? project.sheets[0];
+    const sheets = project.sheets.map(normalizeSheet);
+    const activeSheet = sheets.find((sheet) => sheet.id === project.activeSheetId) ?? sheets[0];
 
     return {
       ...project,
+      sheets,
       activeSheetId: activeSheet.id,
+      buses: activeSheet.buses,
+      sheetPins: activeSheet.sheetPins,
       symbols: activeSheet.symbols,
       wires: activeSheet.wires,
       netLabels: activeSheet.netLabels,
@@ -21,19 +33,23 @@ export const normalizeProject = (project: SchematicProject): SchematicProject =>
     };
   }
 
-  const legacySheet: SchematicSheet = {
+  const legacySheet = normalizeSheet({
     id: DEFAULT_SHEET_ID,
     name: "Sheet 1",
     symbols: project.symbols ?? [],
     wires: project.wires ?? [],
+    buses: project.buses ?? emptyBuses(),
     netLabels: project.netLabels ?? [],
+    sheetPins: project.sheetPins ?? emptySheetPins(),
     textNotes: project.textNotes ?? [],
-  };
+  });
 
   return {
     ...project,
     sheets: [legacySheet],
     activeSheetId: DEFAULT_SHEET_ID,
+    buses: legacySheet.buses,
+    sheetPins: legacySheet.sheetPins,
     symbols: legacySheet.symbols,
     wires: legacySheet.wires,
     netLabels: legacySheet.netLabels,
@@ -54,14 +70,18 @@ export const getProjectView = (project: SchematicProject, sheetId: string): Sche
   console.info("[projectSheets] Building flat project view for sheet", { projectId: project.id, sheetId });
 
   const normalized = normalizeProject(project);
-  const sheet = normalized.sheets.find((candidate) => candidate.id === sheetId) ?? normalized.sheets[0];
+  const sheet = normalizeSheet(
+    normalized.sheets.find((candidate) => candidate.id === sheetId) ?? normalized.sheets[0],
+  );
 
   return {
     ...normalized,
     activeSheetId: sheet.id,
     symbols: sheet.symbols,
     wires: sheet.wires,
+    buses: sheet.buses,
     netLabels: sheet.netLabels,
+    sheetPins: sheet.sheetPins,
     textNotes: sheet.textNotes,
   };
 };
@@ -69,27 +89,29 @@ export const getProjectView = (project: SchematicProject, sheetId: string): Sche
 export const commitSheetContent = (
   project: SchematicProject,
   sheetId: string,
-  content: Pick<SchematicSheet, "symbols" | "wires" | "netLabels" | "textNotes">,
+  content: Pick<SchematicSheet, "symbols" | "wires" | "buses" | "netLabels" | "sheetPins" | "textNotes">,
 ): SchematicProject => {
   console.info("[projectSheets] Committing sheet content", { projectId: project.id, sheetId });
 
   const normalized = normalizeProject(project);
+  const normalizedContent = {
+    symbols: content.symbols,
+    wires: content.wires,
+    buses: content.buses ?? emptyBuses(),
+    netLabels: content.netLabels,
+    sheetPins: content.sheetPins ?? emptySheetPins(),
+    textNotes: content.textNotes,
+  };
 
   return {
     ...normalized,
     updatedAt: Date.now(),
-    symbols: content.symbols,
-    wires: content.wires,
-    netLabels: content.netLabels,
-    textNotes: content.textNotes,
+    ...normalizedContent,
     sheets: normalized.sheets.map((sheet) =>
       sheet.id === sheetId
         ? {
             ...sheet,
-            symbols: content.symbols,
-            wires: content.wires,
-            netLabels: content.netLabels,
-            textNotes: content.textNotes,
+            ...normalizedContent,
           }
         : sheet,
     ),
@@ -104,7 +126,9 @@ export const createDefaultSheet = (name = "Sheet 1"): SchematicSheet => {
     name,
     symbols: [],
     wires: [],
+    buses: [],
     netLabels: [],
+    sheetPins: [],
     textNotes: [],
   };
 };
@@ -121,7 +145,9 @@ export const addSheetToProject = (project: SchematicProject, name?: string): Sch
     activeSheetId: nextSheet.id,
     symbols: nextSheet.symbols,
     wires: nextSheet.wires,
+    buses: nextSheet.buses,
     netLabels: nextSheet.netLabels,
+    sheetPins: nextSheet.sheetPins,
     textNotes: nextSheet.textNotes,
   };
 };

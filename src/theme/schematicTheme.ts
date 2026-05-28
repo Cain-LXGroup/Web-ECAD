@@ -3,8 +3,11 @@ export type SchematicColorRole =
   | "gridDot"
   | "wire"
   | "wireSelected"
+  | "busStroke"
   | "netHighlight"
   | "ercMarker"
+  | "hierarchicalPin"
+  | "hierarchicalPinFill"
   | "junction"
   | "junctionStroke"
   | "bodyStroke"
@@ -32,8 +35,11 @@ export const SCHEMATIC_COLOR_ROLES: SchematicColorRole[] = [
   "gridDot",
   "wire",
   "wireSelected",
+  "busStroke",
   "netHighlight",
   "ercMarker",
+  "hierarchicalPin",
+  "hierarchicalPinFill",
   "junction",
   "junctionStroke",
   "bodyStroke",
@@ -60,7 +66,10 @@ export const SCHEMATIC_COLOR_LABELS: Record<SchematicColorRole, string> = {
   gridDot: "Grid dots",
   wire: "Wire stroke",
   wireSelected: "Wire (selected)",
+  busStroke: "Bus stroke",
   netHighlight: "Net highlight",
+  hierarchicalPin: "Hierarchical sheet pin",
+  hierarchicalPinFill: "Hierarchical pin fill",
   ercMarker: "ERC marker",
   junction: "Junction fill",
   junctionStroke: "Junction outline",
@@ -100,8 +109,11 @@ export const DEFAULT_SCHEMATIC_COLORS_DARK: SchematicColors = {
   gridDot: "rgba(136, 192, 112, 0.22)",
   wire: "#88c070",
   wireSelected: "#9ad4ff",
+  busStroke: "#60a5fa",
   netHighlight: "#facc15",
   ercMarker: "#fb7185",
+  hierarchicalPin: "#c084fc",
+  hierarchicalPinFill: "rgba(192, 132, 252, 0.25)",
   junction: "#88c070",
   junctionStroke: "#202228",
   bodyStroke: "#c07070",
@@ -129,8 +141,11 @@ export const DEFAULT_SCHEMATIC_COLORS_LIGHT: SchematicColors = {
   gridDot: "rgba(22, 101, 52, 0.2)",
   wire: "#15803d",
   wireSelected: "#0369a1",
+  busStroke: "#2563eb",
   netHighlight: "#ca8a04",
   ercMarker: "#e11d48",
+  hierarchicalPin: "#7c3aed",
+  hierarchicalPinFill: "rgba(124, 58, 237, 0.18)",
   junction: "#15803d",
   junctionStroke: "#f1f5f9",
   bodyStroke: "#b91c1c",

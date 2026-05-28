@@ -3,7 +3,7 @@ import { glassPanel } from "./ui/uiStyles";
 
 export type CanvasContextMenuTarget = {
   objectId: string;
-  objectType: "symbol" | "wire" | "net-label" | "text-note";
+  objectType: "symbol" | "wire" | "bus" | "net-label" | "sheet-pin" | "text-note";
   clientX: number;
   clientY: number;
 };
