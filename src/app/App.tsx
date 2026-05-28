@@ -27,6 +27,7 @@ import { chromeBody, chromeTitle } from "../components/ui/uiStyles";
 import { SchematicCanvas, type SchematicCanvasHandle } from "../editor/SchematicCanvas";
 import { computeNetHighlight, type NetHighlightSet } from "../editor/netHighlight";
 import { computeErcViolations } from "../editor/erc";
+import type { ErcViolation } from "../library/types";
 import { FavouritesDockStrip } from "../components/FavouritesDockStrip";
 import { createDefaultSheet, normalizeProject } from "../editor/projectSheets";
 import { DEFAULT_GRID_SIZE } from "../editor/snapping";
@@ -171,10 +172,41 @@ function App() {
     symbolIndex,
   ]);
 
-  const ercViolations = useMemo(
-    () => computeErcViolations(editor.state.project, symbolIndex),
-    [editor.state.project, symbolIndex],
-  );
+  type ErcReport = {
+    violations: ErcViolation[];
+    ranAt: number;
+    projectRevision: number;
+  };
+
+  const [ercReport, setErcReport] = useState<ErcReport | null>(null);
+
+  const ercProjectRevision = editor.state.project.updatedAt;
+  const ercStale = ercReport !== null && ercReport.projectRevision !== ercProjectRevision;
+  const ercViolations = ercReport?.violations ?? [];
+
+  const runErc = useCallback(() => {
+    console.info("[App] Running ERC", { projectId: editor.state.project.id });
+
+    const violations = computeErcViolations(editor.state.project, symbolIndex);
+    setErcReport({
+      violations,
+      ranAt: Date.now(),
+      projectRevision: ercProjectRevision,
+    });
+
+    const errorCount = violations.filter((violation) => violation.severity === "error").length;
+    const warningCount = violations.length - errorCount;
+    setStatusMessage(
+      violations.length === 0
+        ? "ERC finished: no violations."
+        : `ERC finished: ${errorCount} error${errorCount === 1 ? "" : "s"}, ${warningCount} warning${warningCount === 1 ? "" : "s"}.`,
+    );
+  }, [editor.state.project, ercProjectRevision, symbolIndex]);
+
+  useEffect(() => {
+    console.info("[App] Resetting ERC report for new project", { projectId: editor.state.project.id });
+    setErcReport(null);
+  }, [editor.state.project.id]);
 
   useEffect(() => {
     console.info("[App] Scheduling debounced auto-save", { projectId: editor.state.project.id });
@@ -938,6 +970,10 @@ function App() {
 
       <ErcPanel
         violations={ercViolations}
+        hasRun={ercReport !== null}
+        isStale={ercStale}
+        lastRunAt={ercReport?.ranAt}
+        onRunErc={runErc}
         suppressionCount={editor.state.project.ercSuppressions?.length ?? 0}
         onSelectViolation={(violation) => {
           editor.focusErcViolation(violation, symbolIndex);
@@ -950,11 +986,11 @@ function App() {
         }}
         onSuppressViolation={(violation) => {
           editor.suppressErcViolation(violation);
-          setStatusMessage("Suppressed ERC marker for this target.");
+          setStatusMessage("Suppressed ERC marker for this target. Run ERC again to refresh the list.");
         }}
         onClearSuppressions={() => {
           editor.clearErcSuppressions();
-          setStatusMessage("Cleared all ERC suppressions.");
+          setStatusMessage("Cleared all ERC suppressions. Run ERC to refresh.");
         }}
       />
 

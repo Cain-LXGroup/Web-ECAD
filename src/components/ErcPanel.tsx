@@ -8,10 +8,28 @@ import { chromeBody, chromeTitle } from "./ui/uiStyles";
 
 type ErcPanelProps = {
   violations: ErcViolation[];
+  hasRun: boolean;
+  isStale: boolean;
+  lastRunAt?: number;
+  onRunErc: () => void;
   onSelectViolation: (violation: ErcViolation) => void;
   onSuppressViolation: (violation: ErcViolation) => void;
   onClearSuppressions?: () => void;
   suppressionCount?: number;
+};
+
+const formatLastRun = (timestamp: number): string => {
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (elapsedSeconds < 10) {
+    return "just now";
+  }
+
+  if (elapsedSeconds < 60) {
+    return `${elapsedSeconds}s ago`;
+  }
+
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  return `${elapsedMinutes}m ago`;
 };
 
 type ViolationGroup = {
@@ -116,12 +134,16 @@ const ViolationRow = ({
 
 export const ErcPanel = ({
   violations,
+  hasRun,
+  isStale,
+  lastRunAt,
+  onRunErc,
   onSelectViolation,
   onSuppressViolation,
   onClearSuppressions,
   suppressionCount = 0,
 }: ErcPanelProps) => {
-  console.info("[ErcPanel] Rendering ERC panel", { violationCount: violations.length });
+  console.info("[ErcPanel] Rendering ERC panel", { violationCount: violations.length, hasRun, isStale });
 
   const [groupBySymbol, setGroupBySymbol] = useState(true);
   const summary = useMemo(() => summarizeErcViolations(violations), [violations]);
@@ -134,7 +156,7 @@ export const ErcPanel = ({
     <GlassPanel>
       <div className="flex items-start justify-between gap-3">
         <h2 className={chromeTitle}>ERC</h2>
-        {violations.length > 0 ? (
+        {hasRun && violations.length > 0 ? (
           <div className="flex flex-col items-end gap-1 text-right text-xs">
             <span className="font-semibold text-red-200">{summary.errorCount} errors</span>
             <span className="text-amber-100">{summary.warningCount} warnings</span>
@@ -142,11 +164,37 @@ export const ErcPanel = ({
         ) : null}
       </div>
       <p className={`mt-2 ${chromeBody}`}>
-        Electrical rules check: pin types, connectivity, output conflicts, and fields. Showing{" "}
-        {summary.totalCount} issue{summary.totalCount === 1 ? "" : "s"}.
+        Electrical rules check: pin types, connectivity, output conflicts, and fields.
+        {hasRun
+          ? ` Last run ${lastRunAt ? formatLastRun(lastRunAt) : ""} — ${summary.totalCount} issue${summary.totalCount === 1 ? "" : "s"}.`
+          : " Run ERC after editing wires or placement."}
       </p>
 
-      {violations.length > 0 ? (
+      <div className="mt-3">
+        <BubbleButton variant="primary" className="w-full !py-2.5 text-sm font-semibold" onClick={onRunErc}>
+          Run ERC
+        </BubbleButton>
+      </div>
+
+      {isStale ? (
+        <p className="mt-2 rounded-xl border border-amber-400/35 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+          Schematic changed since the last ERC run. Run ERC again to update results.
+        </p>
+      ) : null}
+
+      {!hasRun ? (
+        <p className="mt-3 rounded-xl border border-[var(--chrome-border)] bg-[var(--chrome-panel-soft)] px-3 py-2 text-sm text-[var(--chrome-muted)]">
+          Press <span className="font-semibold text-[var(--chrome-text)]">Run ERC</span> to check the schematic.
+        </p>
+      ) : null}
+
+      {hasRun && violations.length === 0 ? (
+        <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200">
+          No ERC violations detected.
+        </p>
+      ) : null}
+
+      {hasRun && violations.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <BubbleButton
             variant={groupBySymbol ? "primary" : "secondary"}
@@ -173,11 +221,8 @@ export const ErcPanel = ({
         </div>
       ) : null}
 
-      {violations.length === 0 ? (
-        <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200">
-          No ERC violations detected.
-        </p>
-      ) : groupBySymbol ? (
+      {hasRun && violations.length > 0 ? (
+        groupBySymbol ? (
         <div className="mt-3 max-h-[min(52vh,520px)] space-y-3 overflow-y-auto pr-1">
           {groups.map((group) => (
             <section key={group.key}>
@@ -210,18 +255,19 @@ export const ErcPanel = ({
             </ul>
           ) : null}
         </div>
-      ) : (
-        <ul className="mt-3 max-h-[min(52vh,520px)] space-y-2 overflow-y-auto pr-1">
-          {violations.map((violation) => (
-            <ViolationRow
-              key={violation.id}
-              violation={violation}
-              onSelectViolation={onSelectViolation}
-              onSuppressViolation={onSuppressViolation}
-            />
-          ))}
-        </ul>
-      )}
+        ) : (
+          <ul className="mt-3 max-h-[min(52vh,520px)] space-y-2 overflow-y-auto pr-1">
+            {violations.map((violation) => (
+              <ViolationRow
+                key={violation.id}
+                violation={violation}
+                onSelectViolation={onSelectViolation}
+                onSuppressViolation={onSuppressViolation}
+              />
+            ))}
+          </ul>
+        )
+      ) : null}
     </GlassPanel>
   );
 };

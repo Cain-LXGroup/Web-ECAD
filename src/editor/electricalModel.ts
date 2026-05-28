@@ -1,5 +1,6 @@
 import type { LibrarySymbol, NetLabelScope, Point, SchematicProject, WireConnection } from "../library/types";
 import { normalizePinElectricalType } from "../library/pinElectricalType";
+import { isPinElectricallyConnected } from "./pinConnectivity";
 import { resolveWireConnectionPoint } from "./wireRouting";
 
 const pinKey = (connection: WireConnection): string =>
@@ -134,9 +135,10 @@ export const buildElectricalModel = (
         pinNumber: pin.number,
       };
       const anchor = resolveWireConnectionPoint(project, symbolIndex, connection);
+      const wired = isPinElectricallyConnected(project, symbolIndex, connection);
       const pKey = pinKey(connection);
 
-      if (anchor) {
+      if (wired && anchor) {
         unionFind.union(pKey, junctionKey(anchor, gridSize));
       }
 
@@ -147,7 +149,7 @@ export const buildElectricalModel = (
         pinNumber: pin.number,
         pinName: pin.name?.trim() || pin.number,
         electricalType: normalizePinElectricalType(pin.electricalType),
-        connected: Boolean(anchor),
+        connected: wired,
       });
     }
   }
