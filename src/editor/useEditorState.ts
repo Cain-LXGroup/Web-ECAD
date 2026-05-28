@@ -48,8 +48,14 @@ import {
   removeWirePointAtIndex,
 } from "./wireEditing";
 import type { WireNodeSelection } from "./WireNodeHandles";
-import { canvasDeltaToInstanceLocal } from "./pinTextLayout";
-import type { PinTextKind } from "../library/types";
+import { getDefaultSymbolInstanceValue } from "./symbolDisplay";
+import { canvasDeltaToInstanceLocal } from "./symbolTextLayout";
+import {
+  applySymbolTextContent,
+  applySymbolTextOffset,
+  applySymbolTextRotation,
+} from "./symbolTextMutation";
+import type { SymbolTextSelection, SymbolTextTarget } from "../library/types";
 
 export type Tool = "select" | "wire" | "label-global" | "label-sheet" | "text";
 
@@ -64,18 +70,12 @@ export type WireDraftState = {
 
 export type SelectionMode = "replace" | "add" | "toggle";
 
-export type PinTextSelection = {
-  instanceId: string;
-  pinNumber: string;
-  kind: PinTextKind;
-};
-
 export type EditorState = {
   project: SchematicProject;
   selectedIds: string[];
   selectedWireNode?: WireNodeSelection;
   symbolPinTextEditInstanceId?: string;
-  selectedPinText?: PinTextSelection;
+  selectedSymbolText?: SymbolTextSelection;
   activeTool: Tool;
   zoom: number;
   pan: Point;
@@ -143,7 +143,7 @@ export const useEditorState = (
   const [symbolPinTextEditInstanceId, setSymbolPinTextEditInstanceId] = useState<string | undefined>(
     undefined,
   );
-  const [selectedPinText, setSelectedPinText] = useState<PinTextSelection | undefined>(undefined);
+  const [selectedSymbolText, setSelectedSymbolText] = useState<SymbolTextSelection | undefined>(undefined);
   const [activeTool, setActiveTool] = useState<Tool>("select");
   const [zoom, setZoomState] = useState(1);
   const [pan, setPanState] = useState<Point>({ x: 0, y: 0 });
@@ -279,7 +279,7 @@ export const useEditorState = (
     setSelectedIds([]);
     setSelectedWireNode(undefined);
     setSymbolPinTextEditInstanceId(undefined);
-    setSelectedPinText(undefined);
+    setSelectedSymbolText(undefined);
     setWireDraft(undefined);
     setPlacingSymbolIdState(undefined);
     setActiveTool("select");
@@ -298,7 +298,7 @@ export const useEditorState = (
       selectedIds,
       selectedWireNode,
       symbolPinTextEditInstanceId,
-      selectedPinText,
+      selectedSymbolText,
       activeTool,
       zoom,
       pan,
@@ -315,7 +315,7 @@ export const useEditorState = (
       pan,
       placingSymbolId,
       selectedIds,
-      selectedPinText,
+      selectedSymbolText,
       selectedWireNode,
       sheetView,
       symbolPinTextEditInstanceId,
@@ -703,7 +703,7 @@ export const useEditorState = (
             id: symbolInstanceId,
             symbolId,
             ref: getNextReference(currentProject, symbol?.referencePrefix ?? "U"),
-            value: symbol?.name,
+            value: symbol ? getDefaultSymbolInstanceValue(symbol) : undefined,
             x: snappedPoint.x,
             y: snappedPoint.y,
             rotation: 0,
@@ -719,7 +719,7 @@ export const useEditorState = (
       console.info("[useEditorState] Selecting object", { id, mode });
 
       setSelectedWireNode(undefined);
-      setSelectedPinText(undefined);
+      setSelectedSymbolText(undefined);
 
       if (mode === "replace") {
         setSelectedIds([id]);
@@ -745,7 +745,7 @@ export const useEditorState = (
       setSelectedIds([]);
       setSelectedWireNode(undefined);
       setSymbolPinTextEditInstanceId(undefined);
-      setSelectedPinText(undefined);
+      setSelectedSymbolText(undefined);
     },
     selectWireNode: (wireId: string, pointIndex: number) => {
       console.info("[useEditorState] Selecting wire node", { wireId, pointIndex });
@@ -753,7 +753,7 @@ export const useEditorState = (
       setSelectedIds([wireId]);
       setSelectedWireNode({ wireId, pointIndex });
       setSymbolPinTextEditInstanceId(undefined);
-      setSelectedPinText(undefined);
+      setSelectedSymbolText(undefined);
     },
     moveWireNode: (point: Point) => {
       console.info("[useEditorState] Moving selected wire node", { point, selectedWireNode });
@@ -1009,39 +1009,39 @@ export const useEditorState = (
       }));
     },
     enterSymbolPinTextEdit: (instanceId: string) => {
-      console.info("[useEditorState] Entering symbol pin text edit mode", { instanceId });
+      console.info("[useEditorState] Entering symbol text edit mode", { instanceId });
 
       setSelectedIds([instanceId]);
       setSelectedWireNode(undefined);
       setSymbolPinTextEditInstanceId(instanceId);
-      setSelectedPinText(undefined);
+      setSelectedSymbolText(undefined);
     },
     exitSymbolPinTextEdit: () => {
-      console.info("[useEditorState] Exiting symbol pin text edit mode");
+      console.info("[useEditorState] Exiting symbol text edit mode");
 
       setSymbolPinTextEditInstanceId(undefined);
-      setSelectedPinText(undefined);
+      setSelectedSymbolText(undefined);
     },
-    selectPinText: (instanceId: string, pinNumber: string, kind: PinTextKind) => {
-      console.info("[useEditorState] Selecting pin text", { instanceId, pinNumber, kind });
+    selectSymbolText: (instanceId: string, target: SymbolTextTarget) => {
+      console.info("[useEditorState] Selecting symbol text", { instanceId, target });
 
       setSelectedIds([instanceId]);
       setSymbolPinTextEditInstanceId(instanceId);
-      setSelectedPinText({ instanceId, pinNumber, kind });
+      setSelectedSymbolText({ instanceId, target });
     },
-    clearPinTextSelection: () => {
-      console.info("[useEditorState] Clearing pin text selection");
+    clearSymbolTextSelection: () => {
+      console.info("[useEditorState] Clearing symbol text selection");
 
-      setSelectedPinText(undefined);
+      setSelectedSymbolText(undefined);
     },
-    movePinTextByDelta: (worldDelta: Point) => {
-      console.info("[useEditorState] Moving selected pin text", { worldDelta, selectedPinText });
+    moveSymbolTextByDelta: (worldDelta: Point) => {
+      console.info("[useEditorState] Moving selected symbol text", { worldDelta, selectedSymbolText });
 
-      if (!selectedPinText) {
+      if (!selectedSymbolText) {
         return;
       }
 
-      const { instanceId, pinNumber, kind } = selectedPinText;
+      const { instanceId, target } = selectedSymbolText;
       const instance = project.symbols.find((symbol) => symbol.id === instanceId);
       if (!instance) {
         return;
@@ -1055,80 +1055,108 @@ export const useEditorState = (
       }
 
       applyProjectUpdate(
-        "movePinText",
+        "moveSymbolText",
         (currentProject) => ({
           ...currentProject,
-          symbols: currentProject.symbols.map((symbol) => {
-            if (symbol.id !== instanceId) {
-              return symbol;
-            }
-
-            const pinAnnotations = symbol.pinTextAnnotations ?? {};
-            const pinEntry = pinAnnotations[pinNumber] ?? {};
-            const current = pinEntry[kind] ?? {};
-            const currentOffset = current.offset ?? { x: 0, y: 0 };
-
-            return {
-              ...symbol,
-              pinTextAnnotations: {
-                ...pinAnnotations,
-                [pinNumber]: {
-                  ...pinEntry,
-                  [kind]: {
-                    ...current,
-                    offset: {
-                      x: currentOffset.x + localDelta.x,
-                      y: currentOffset.y + localDelta.y,
-                    },
-                  },
-                },
-              },
-            };
-          }),
+          symbols: currentProject.symbols.map((symbol) =>
+            symbol.id === instanceId ? applySymbolTextOffset(symbol, target, localDelta) : symbol,
+          ),
         }),
         { record: false },
       );
     },
-    commitPinTextEdit: () => {
-      console.info("[useEditorState] Committing pin text edit");
+    commitSymbolTextEdit: () => {
+      console.info("[useEditorState] Committing symbol text edit");
 
       moveHistoryRecordedRef.current = false;
     },
-    rotateSelectedPinText: () => {
-      console.info("[useEditorState] Rotating selected pin text", { selectedPinText });
+    rotateSelectedSymbolText: () => {
+      console.info("[useEditorState] Rotating selected symbol text", { selectedSymbolText });
 
-      if (!selectedPinText) {
+      if (!selectedSymbolText) {
         return;
       }
 
-      const { instanceId, pinNumber, kind } = selectedPinText;
+      const { instanceId, target } = selectedSymbolText;
 
-      applyProjectUpdate("rotatePinText", (currentProject) => ({
+      applyProjectUpdate("rotateSymbolText", (currentProject) => ({
         ...currentProject,
-        symbols: currentProject.symbols.map((symbol) => {
-          if (symbol.id !== instanceId) {
-            return symbol;
-          }
-
-          const pinAnnotations = symbol.pinTextAnnotations ?? {};
-          const pinEntry = pinAnnotations[pinNumber] ?? {};
-          const current = pinEntry[kind] ?? {};
-
-          return {
-            ...symbol,
-            pinTextAnnotations: {
-              ...pinAnnotations,
-              [pinNumber]: {
-                ...pinEntry,
-                [kind]: {
-                  ...current,
-                  rotation: normalizeRotation((current.rotation ?? 0) + 90),
-                },
-              },
-            },
-          };
-        }),
+        symbols: currentProject.symbols.map((symbol) =>
+          symbol.id === instanceId ? applySymbolTextRotation(symbol, target) : symbol,
+        ),
       }));
+    },
+    setSelectedSymbolTextContent: (text: string) => {
+      console.info("[useEditorState] Setting selected symbol text content", { selectedSymbolText, text });
+
+      if (!selectedSymbolText) {
+        return;
+      }
+
+      const { instanceId, target } = selectedSymbolText;
+      if (target.type === "pin") {
+        return;
+      }
+
+      applyProjectUpdate("setSymbolTextContent", (currentProject) => ({
+        ...currentProject,
+        symbols: currentProject.symbols.map((symbol) =>
+          symbol.id === instanceId ? applySymbolTextContent(symbol, target, text) : symbol,
+        ),
+      }));
+    },
+    ensureSymbolValueField: (instanceId: string) => {
+      console.info("[useEditorState] Ensuring symbol has a value field", { instanceId });
+
+      const instance = project.symbols.find((symbol) => symbol.id === instanceId);
+      const symbol = instance ? symbolIndex[instance.symbolId] : undefined;
+      if (!instance || !symbol || instance.value?.trim()) {
+        return;
+      }
+
+      const defaultValue = getDefaultSymbolInstanceValue(symbol) ?? "";
+      applyProjectUpdate("ensureSymbolValueField", (currentProject) => ({
+        ...currentProject,
+        symbols: currentProject.symbols.map((candidate) =>
+          candidate.id === instanceId ? { ...candidate, value: defaultValue } : candidate,
+        ),
+      }));
+    },
+    addSymbolCustomText: (instanceId: string, text: string) => {
+      console.info("[useEditorState] Adding custom symbol text label", { instanceId, text });
+
+      const instance = project.symbols.find((symbol) => symbol.id === instanceId);
+      const symbol = instance ? symbolIndex[instance.symbolId] : undefined;
+      if (!instance || !symbol) {
+        return undefined;
+      }
+
+      const labelId = `sym-text-${uuidv4()}`;
+      const baseY = -(symbol.bounds.minY - 48);
+
+      applyProjectUpdate("addSymbolCustomText", (currentProject) => ({
+        ...currentProject,
+        symbols: currentProject.symbols.map((candidate) =>
+          candidate.id === instanceId
+            ? {
+                ...candidate,
+                customTextLabels: [
+                  ...(candidate.customTextLabels ?? []),
+                  {
+                    id: labelId,
+                    text: text.trim() || "Text",
+                    x: symbol.bounds.minX,
+                    y: baseY,
+                  },
+                ],
+              }
+            : candidate,
+        ),
+      }));
+
+      const target: SymbolTextTarget = { type: "custom", id: labelId };
+      setSelectedSymbolText({ instanceId, target });
+      return target;
     },
     deleteSelected: () => {
       console.info("[useEditorState] Deleting selected objects", { selectedIds, selectedWireNode });
@@ -1170,7 +1198,7 @@ export const useEditorState = (
       setSelectedIds([]);
       setSelectedWireNode(undefined);
       setSymbolPinTextEditInstanceId(undefined);
-      setSelectedPinText(undefined);
+      setSelectedSymbolText(undefined);
     },
     startWire: (point: Point) => {
       console.info("[useEditorState] Starting wire draft", { point, wireRoutingMode });

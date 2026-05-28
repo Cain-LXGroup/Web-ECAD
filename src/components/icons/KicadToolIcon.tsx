@@ -51,7 +51,7 @@ export const KicadToolIcon = ({
 
 export const getKicadToolLabel = (tool: BottomToolbarAction): string => KICAD_ICON_LABELS[tool];
 
-export type ContextActionIcon = "rotate" | "mirror" | "delete" | "zoom" | "edit";
+export type ContextActionIcon = "rotate" | "mirror" | "delete" | "zoom" | "edit" | "text";
 
 const CONTEXT_ICON_MAP: Record<ContextActionIcon, string> = {
   rotate: "rotate_cw",
@@ -59,6 +59,7 @@ const CONTEXT_ICON_MAP: Record<ContextActionIcon, string> = {
   delete: "delete_cursor",
   zoom: "move",
   edit: "text",
+  text: "text",
 };
 
 const CONTEXT_ICON_LABELS: Record<ContextActionIcon, string> = {
@@ -66,7 +67,8 @@ const CONTEXT_ICON_LABELS: Record<ContextActionIcon, string> = {
   mirror: "Mirror",
   delete: "Delete",
   zoom: "Zoom to selection",
-  edit: "Edit pin labels",
+  edit: "Edit symbol text",
+  text: "Add text",
 };
 
 type KicadContextIconProps = {

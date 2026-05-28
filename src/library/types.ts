@@ -101,6 +101,26 @@ export type PinTextAnnotations = {
   number?: SymbolFieldAnnotation;
 };
 
+export type SymbolTextTarget =
+  | { type: "pin"; pinNumber: string; kind: PinTextKind }
+  | { type: "ref" }
+  | { type: "value" }
+  | { type: "custom"; id: string };
+
+export type SymbolTextSelection = {
+  instanceId: string;
+  target: SymbolTextTarget;
+};
+
+/** User-added text label on a placed symbol instance. */
+export type SymbolCustomTextLabel = {
+  id: string;
+  text: string;
+  /** Base position in symbol-local coordinates. */
+  x: number;
+  y: number;
+} & SymbolFieldAnnotation;
+
 export type SymbolInstance = {
   id: string;
   symbolId: string;
@@ -114,6 +134,7 @@ export type SymbolInstance = {
   valueAnnotation?: SymbolFieldAnnotation;
   /** Per-pin text overrides keyed by pin number. */
   pinTextAnnotations?: Record<string, PinTextAnnotations>;
+  customTextLabels?: SymbolCustomTextLabel[];
 };
 
 export type WireConnection = {

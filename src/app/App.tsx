@@ -44,6 +44,7 @@ import {
   seedBundledLibraryPack,
   type BundledLibrarySeedProgress,
 } from "../library/seedBundledLibraries";
+import { getDefaultSymbolInstanceValue } from "../editor/symbolDisplay";
 import { getTestSymbols } from "../library/testSymbols";
 import type { LibrarySymbol, SchematicProject } from "../library/types";
 import { getAllSymbols, saveSymbols, searchStoredSymbols } from "../storage/libraryStore";
@@ -716,25 +717,98 @@ function App() {
     }
 
     if (isPinTextEditActive) {
+      const selectedTarget = editor.state.selectedSymbolText?.target;
+      const canEditSelectedText = Boolean(
+        selectedTarget && selectedTarget.type !== "pin",
+      );
+
       return [
         {
-          id: "rotate-pin-text",
-          icon: "rotate" as const,
-          label: "Rotate pin label",
-          disabled: !editor.state.selectedPinText,
+          id: "edit-symbol-text-content",
+          icon: "edit" as const,
+          label: "Edit text",
+          disabled: !canEditSelectedText,
           onClick: () => {
-            editor.rotateSelectedPinText();
-            setStatusMessage("Rotated the selected pin label.");
+            const selection = editor.state.selectedSymbolText;
+            if (!selection || selection.target.type === "pin") {
+              return;
+            }
+
+            const instance = editor.state.project.symbols.find((symbol) => symbol.id === selection.instanceId);
+            if (!instance) {
+              return;
+            }
+
+            const target = selection.target;
+            let currentText = "";
+            if (target.type === "ref") {
+              currentText = instance.ref;
+            } else if (target.type === "value") {
+              currentText = instance.value ?? "";
+            } else if (target.type === "custom") {
+              currentText =
+                instance.customTextLabels?.find((label) => label.id === target.id)?.text ?? "";
+            }
+
+            const nextText = window.prompt("Edit label text", currentText);
+            if (nextText === null) {
+              return;
+            }
+
+            editor.setSelectedSymbolTextContent(nextText);
+            setStatusMessage("Updated symbol label text.");
           },
         },
         {
-          id: "done-pin-text-edit",
+          id: "add-symbol-text",
+          icon: "text" as const,
+          label: "Add text",
+          onClick: () => {
+            const instanceId = editor.state.symbolPinTextEditInstanceId;
+            if (!instanceId) {
+              return;
+            }
+
+            const instance = editor.state.project.symbols.find((symbol) => symbol.id === instanceId);
+            const symbol = instance ? symbolIndex[instance.symbolId] : undefined;
+            const defaultText =
+              instance?.value?.trim() ||
+              (symbol ? getDefaultSymbolInstanceValue(symbol) : undefined) ||
+              "10k";
+            const nextText = window.prompt("New label text", defaultText);
+            if (nextText === null) {
+              return;
+            }
+
+            if (instance && !instance.value?.trim()) {
+              editor.selectSymbolText(instanceId, { type: "value" });
+              editor.setSelectedSymbolTextContent(nextText);
+              setStatusMessage("Set component value text.");
+              return;
+            }
+
+            editor.addSymbolCustomText(instanceId, nextText);
+            setStatusMessage("Added custom symbol text.");
+          },
+        },
+        {
+          id: "rotate-symbol-text",
+          icon: "rotate" as const,
+          label: "Rotate label",
+          disabled: !editor.state.selectedSymbolText,
+          onClick: () => {
+            editor.rotateSelectedSymbolText();
+            setStatusMessage("Rotated the selected label.");
+          },
+        },
+        {
+          id: "done-symbol-text-edit",
           icon: "edit" as const,
-          label: "Done editing pin labels",
+          label: "Done editing symbol text",
           variant: "primary" as const,
           onClick: () => {
             editor.exitSymbolPinTextEdit();
-            setStatusMessage("Finished editing pin labels.");
+            setStatusMessage("Finished editing symbol text.");
           },
         },
         {
@@ -764,12 +838,12 @@ function App() {
             {
               id: "edit-pin-text",
               icon: "edit" as const,
-              label: "Edit pin labels",
+              label: "Edit symbol text",
               variant: "primary" as const,
               onClick: () => {
                 editor.enterSymbolPinTextEdit(singleSelectedSymbolId);
                 setStatusMessage(
-                  "Pin label edit mode. Tap a pin name or number, drag to move, or use Rotate.",
+                  "Symbol text edit mode. Tap ref, value, pin labels, or add text; drag to move or rotate.",
                 );
               },
             },
@@ -821,7 +895,7 @@ function App() {
     editor,
     editor.state.activeTool,
     editor.state.selectedIds.length,
-    editor.state.selectedPinText,
+    editor.state.selectedSymbolText,
     editor.state.symbolPinTextEditInstanceId,
     hasLabelSelection,
     hasTransformableSelection,
@@ -1219,7 +1293,7 @@ function App() {
             netHighlight={netHighlight}
             selectedWireNode={editor.state.selectedWireNode}
             symbolPinTextEditInstanceId={editor.state.symbolPinTextEditInstanceId}
-            selectedPinText={editor.state.selectedPinText}
+            selectedSymbolText={editor.state.selectedSymbolText}
             activeTool={editor.state.activeTool}
             placingSymbolId={editor.state.placingSymbolId}
             wireDraft={editor.state.wireDraft}
@@ -1233,10 +1307,10 @@ function App() {
             onMoveWireNode={editor.moveWireNode}
             onCommitWireNodeEdit={editor.commitWireNodeEdit}
             onRemoveWireNodeAt={editor.removeWireNodeAt}
-            onSelectPinText={editor.selectPinText}
-            onClearPinTextSelection={editor.clearPinTextSelection}
-            onMovePinText={editor.movePinTextByDelta}
-            onCommitPinTextEdit={editor.commitPinTextEdit}
+            onSelectSymbolText={editor.selectSymbolText}
+            onClearSymbolTextSelection={editor.clearSymbolTextSelection}
+            onMoveSymbolText={editor.moveSymbolTextByDelta}
+            onCommitSymbolTextEdit={editor.commitSymbolTextEdit}
             onMoveSelected={editor.moveSelected}
             onSnapSelectedToGrid={editor.snapSelectedToGrid}
             onPlaceSymbol={(symbolId, point) => {

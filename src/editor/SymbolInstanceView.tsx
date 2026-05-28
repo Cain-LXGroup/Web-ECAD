@@ -5,14 +5,22 @@ import { getPinBodyPoint } from "../library/symbolGeometry";
 import type {
   LibrarySymbol,
   PinTextKind,
-  SymbolFieldAnnotation,
   SymbolGraphic,
   SymbolInstance,
+  SymbolTextTarget,
   WireConnection,
 } from "../library/types";
+import type { SymbolTextLayout } from "./symbolTextLayout";
 import { formatSymbolFieldCaption } from "./symbolDisplay";
 import { DEFAULT_SCHEMATIC_TEXT_SIZE, scaleThemeFontSize } from "./schematicTextSizing";
-import { estimatePinTextHitSize, getPinTextLayout } from "./pinTextLayout";
+import {
+  getCustomTextLayout,
+  getPinTextLayout,
+  getRefTextLayout,
+  getSymbolTextHitRect,
+  getValueTextLayout,
+  symbolTextTargetsMatch,
+} from "./symbolTextLayout";
 import { kicadSchematicTheme } from "../theme/kicadSchematicTheme";
 import { schematicColorVar } from "../theme/schematicTheme";
 
@@ -162,16 +170,83 @@ type SymbolInstanceViewProps = {
   schematicTextSize?: number;
   showPinLabels?: boolean;
   showFieldLabels?: boolean;
-  pinTextEditMode?: boolean;
-  selectedPinText?: { pinNumber: string; kind: PinTextKind };
+  symbolTextEditMode?: boolean;
+  selectedSymbolText?: SymbolTextTarget;
   onPointerDown?: (event: ReactPointerEvent<SVGGElement>) => void;
   onLongPress?: (event: ReactPointerEvent<SVGElement>) => void;
   onPinPointerDown?: (connection: WireConnection, event: ReactPointerEvent<SVGCircleElement>) => void;
-  onPinTextPointerDown?: (
-    pinNumber: string,
-    kind: PinTextKind,
-    event: ReactPointerEvent<SVGRectElement>,
-  ) => void;
+  onSymbolTextPointerDown?: (target: SymbolTextTarget, event: ReactPointerEvent<SVGRectElement>) => void;
+};
+
+const renderEditableSymbolText = (
+  key: string,
+  layout: SymbolTextLayout,
+  fontSize: number,
+  fill: string,
+  target: SymbolTextTarget,
+  options: {
+    symbolTextEditMode: boolean;
+    selectedSymbolText?: SymbolTextTarget;
+    onSymbolTextPointerDown?: (target: SymbolTextTarget, event: ReactPointerEvent<SVGRectElement>) => void;
+  },
+): ReactNode => {
+  if (layout.hidden) {
+    return null;
+  }
+
+  const hitRect = getSymbolTextHitRect(layout, fontSize);
+  const isSelected =
+    options.selectedSymbolText && symbolTextTargetsMatch(options.selectedSymbolText, target);
+  const displayFill = layout.placeholder ? schematicColorVar("pinNumber") : fill;
+
+  return (
+    <g key={key}>
+      {isSelected ? (
+        <rect
+          x={hitRect.x - 4}
+          y={hitRect.y - 4}
+          width={hitRect.width + 8}
+          height={hitRect.height + 8}
+          fill="none"
+          stroke={schematicColorVar("selection")}
+          strokeDasharray="8 6"
+          strokeWidth={2}
+          rx={4}
+          pointerEvents="none"
+        />
+      ) : null}
+      <text
+        x={layout.x}
+        y={layout.y}
+        fontSize={fontSize}
+        fill={displayFill}
+        fontFamily={kicadSchematicTheme.fontFamily}
+        fontWeight={target.type === "ref" || target.type === "value" ? 700 : undefined}
+        dominantBaseline="middle"
+        textAnchor={layout.textAnchor}
+        transform={layout.rotation ? `rotate(${layout.rotation} ${layout.x} ${layout.y})` : undefined}
+        pointerEvents={options.symbolTextEditMode ? "none" : undefined}
+        opacity={layout.placeholder ? 0.55 : 1}
+      >
+        {layout.text}
+      </text>
+      {options.symbolTextEditMode && options.onSymbolTextPointerDown ? (
+        <rect
+          x={hitRect.x}
+          y={hitRect.y}
+          width={hitRect.width}
+          height={hitRect.height}
+          fill="transparent"
+          stroke="transparent"
+          style={{ cursor: "move" }}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            options.onSymbolTextPointerDown?.(target, event);
+          }}
+        />
+      ) : null}
+    </g>
+  );
 };
 
 export const SymbolInstanceView = ({
@@ -182,12 +257,12 @@ export const SymbolInstanceView = ({
   schematicTextSize = DEFAULT_SCHEMATIC_TEXT_SIZE,
   showPinLabels = true,
   showFieldLabels = true,
-  pinTextEditMode = false,
-  selectedPinText,
+  symbolTextEditMode = false,
+  selectedSymbolText,
   onPointerDown,
   onLongPress,
   onPinPointerDown,
-  onPinTextPointerDown,
+  onSymbolTextPointerDown,
 }: SymbolInstanceViewProps) => {
   console.info("[SymbolInstanceView] Rendering symbol instance", {
     instanceId: instance.id,
@@ -203,38 +278,10 @@ export const SymbolInstanceView = ({
   const valueFontSize = scaleThemeFontSize(kicadSchematicTheme.valueFontSize, schematicTextSize);
   const compactFontSize = scaleThemeFontSize(kicadSchematicTheme.valueFontSize, schematicTextSize);
 
-  const renderFieldAnnotation = (
-    key: string,
-    text: string,
-    defaultX: number,
-    defaultY: number,
-    fontSize: number,
-    fill: string,
-    annotation?: SymbolFieldAnnotation,
-  ) => {
-    if (annotation?.hidden) {
-      return null;
-    }
-
-    const offset = annotation?.offset ?? { x: 0, y: 0 };
-    const x = defaultX + offset.x;
-    const y = defaultY + offset.y;
-    const rotation = annotation?.rotation ?? 0;
-
-    return (
-      <text
-        key={key}
-        x={x}
-        y={y}
-        fontSize={fontSize}
-        fill={fill}
-        fontFamily={kicadSchematicTheme.fontFamily}
-        fontWeight={700}
-        transform={rotation ? `rotate(${rotation} ${x} ${y})` : undefined}
-      >
-        {text}
-      </text>
-    );
+  const editableTextOptions = {
+    symbolTextEditMode,
+    selectedSymbolText,
+    onSymbolTextPointerDown,
   };
   const pinNameFontSize = scaleThemeFontSize(kicadSchematicTheme.pinNameFontSize, schematicTextSize);
   const pinNumberFontSize = scaleThemeFontSize(kicadSchematicTheme.pinNumberFontSize, schematicTextSize);
@@ -273,8 +320,8 @@ export const SymbolInstanceView = ({
           width={boundsWidth + 36}
           height={boundsHeight + 36}
           fill="none"
-          stroke={schematicColorVar(pinTextEditMode ? "netHighlight" : "selection")}
-          strokeDasharray={pinTextEditMode ? undefined : "18 10"}
+          stroke={schematicColorVar(symbolTextEditMode ? "netHighlight" : "selection")}
+          strokeDasharray={symbolTextEditMode ? undefined : "18 10"}
           strokeWidth={3}
           rx={20}
         />
@@ -358,106 +405,94 @@ export const SymbolInstanceView = ({
                 },
               ];
 
-              return entries.map(({ kind, text, fontSize, fill }) => {
-                const layout = getPinTextLayout(pin, kind, pinAnnotations?.[kind]);
-                if (layout.hidden) {
-                  return null;
-                }
-
-                const hitSize = estimatePinTextHitSize(text, fontSize);
-                const isSelected =
-                  selectedPinText?.pinNumber === pin.number && selectedPinText?.kind === kind;
-                const hitX =
-                  layout.textAnchor === "end"
-                    ? layout.x - hitSize.width
-                    : layout.textAnchor === "middle"
-                      ? layout.x - hitSize.width / 2
-                      : layout.x;
-                const hitY = layout.y - hitSize.height / 2;
-
-                return (
-                  <g key={`${instance.id}-label-${pin.number}-${kind}`}>
-                    {isSelected ? (
-                      <rect
-                        x={hitX - 4}
-                        y={hitY - 4}
-                        width={hitSize.width + 8}
-                        height={hitSize.height + 8}
-                        fill="none"
-                        stroke={schematicColorVar("selection")}
-                        strokeDasharray="8 6"
-                        strokeWidth={2}
-                        rx={4}
-                        pointerEvents="none"
-                      />
-                    ) : null}
-                    <text
-                      x={layout.x}
-                      y={layout.y}
-                      fontSize={fontSize}
-                      fill={fill}
-                      fontFamily={kicadSchematicTheme.fontFamily}
-                      dominantBaseline="middle"
-                      textAnchor={layout.textAnchor}
-                      transform={layout.rotation ? `rotate(${layout.rotation} ${layout.x} ${layout.y})` : undefined}
-                      pointerEvents={pinTextEditMode ? "none" : undefined}
-                    >
-                      {text}
-                    </text>
-                    {pinTextEditMode && onPinTextPointerDown ? (
-                      <rect
-                        x={hitX}
-                        y={hitY}
-                        width={hitSize.width}
-                        height={hitSize.height}
-                        fill="transparent"
-                        stroke="transparent"
-                        style={{ cursor: "move" }}
-                        onPointerDown={(event) => {
-                          event.stopPropagation();
-                          onPinTextPointerDown(pin.number, kind, event);
-                        }}
-                      />
-                    ) : null}
-                  </g>
-                );
-              });
+              return entries.map(({ kind, fontSize, fill }) =>
+                renderEditableSymbolText(
+                  `${instance.id}-label-${pin.number}-${kind}`,
+                  getPinTextLayout(pin, kind, pinAnnotations?.[kind]),
+                  fontSize,
+                  fill,
+                  { type: "pin", pinNumber: pin.number, kind },
+                  editableTextOptions,
+                ),
+              );
             })
         : null}
 
       {showFieldLabels ? (
-        fieldCaption.compact ? (
-          renderFieldAnnotation(
-            `${instance.id}-compact-field`,
-            fieldCaption.compact,
-            symbol.bounds.minX,
-            -(symbol.bounds.maxY + 32),
-            compactFontSize,
-            schematicColorVar("valueText"),
-            instance.valueAnnotation ?? instance.refAnnotation,
-          )
-        ) : (
+        symbolTextEditMode ? (
           <>
-            {renderFieldAnnotation(
+            {renderEditableSymbolText(
               `${instance.id}-ref-field`,
-              fieldCaption.ref,
-              symbol.bounds.minX,
-              -(symbol.bounds.maxY + 56),
+              getRefTextLayout(instance, symbol),
               refFontSize,
               schematicColorVar("refText"),
-              instance.refAnnotation,
+              { type: "ref" },
+              editableTextOptions,
+            )}
+            {renderEditableSymbolText(
+              `${instance.id}-value-field`,
+              getValueTextLayout(instance, symbol, { showPlaceholder: true })!,
+              valueFontSize,
+              schematicColorVar("valueText"),
+              { type: "value" },
+              editableTextOptions,
+            )}
+            {(instance.customTextLabels ?? []).map((label) =>
+              renderEditableSymbolText(
+                `${instance.id}-custom-${label.id}`,
+                getCustomTextLayout(label),
+                valueFontSize,
+                schematicColorVar("valueText"),
+                { type: "custom", id: label.id },
+                editableTextOptions,
+              ),
+            )}
+          </>
+        ) : fieldCaption.compact ? (
+          <text
+            key={`${instance.id}-compact-field`}
+            x={symbol.bounds.minX + (instance.valueAnnotation?.offset ?? instance.refAnnotation?.offset ?? { x: 0, y: 0 }).x}
+            y={
+              -(symbol.bounds.maxY + 32) +
+              (instance.valueAnnotation?.offset ?? instance.refAnnotation?.offset ?? { x: 0, y: 0 }).y
+            }
+            fontSize={compactFontSize}
+            fill={schematicColorVar("valueText")}
+            fontFamily={kicadSchematicTheme.fontFamily}
+            fontWeight={700}
+          >
+            {fieldCaption.compact}
+          </text>
+        ) : (
+          <>
+            {renderEditableSymbolText(
+              `${instance.id}-ref-field`,
+              getRefTextLayout(instance, symbol),
+              refFontSize,
+              schematicColorVar("refText"),
+              { type: "ref" },
+              { symbolTextEditMode: false },
             )}
             {fieldCaption.value
-              ? renderFieldAnnotation(
+              ? renderEditableSymbolText(
                   `${instance.id}-value-field`,
-                  fieldCaption.value,
-                  symbol.bounds.minX,
-                  -(symbol.bounds.maxY + 8),
+                  getValueTextLayout(instance, symbol)!,
                   valueFontSize,
                   schematicColorVar("valueText"),
-                  instance.valueAnnotation,
+                  { type: "value" },
+                  { symbolTextEditMode: false },
                 )
               : null}
+            {(instance.customTextLabels ?? []).map((label) =>
+              renderEditableSymbolText(
+                `${instance.id}-custom-${label.id}`,
+                getCustomTextLayout(label),
+                valueFontSize,
+                schematicColorVar("valueText"),
+                { type: "custom", id: label.id },
+                { symbolTextEditMode: false },
+              ),
+            )}
           </>
         )
       ) : null}
