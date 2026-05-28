@@ -2,6 +2,7 @@ import { type SetStateAction, useCallback, useEffect, useMemo, useRef, useState 
 import { v4 as uuidv4 } from "uuid";
 
 import type {
+  ErcViolation,
   LibrarySymbol,
   NetLabel,
   NetLabelScope,
@@ -1157,6 +1158,32 @@ export const useEditorState = (
       const target: SymbolTextTarget = { type: "custom", id: labelId };
       setSelectedSymbolText({ instanceId, target });
       return target;
+    },
+    suppressErcViolation: (violation: ErcViolation) => {
+      console.info("[useEditorState] Suppressing ERC violation", { violationId: violation.id, ruleId: violation.ruleId });
+
+      const suppressionId = `erc-suppress-${uuidv4()}`;
+      applyProjectUpdate("suppressErcViolation", (currentProject) => ({
+        ...currentProject,
+        ercSuppressions: [
+          ...(currentProject.ercSuppressions ?? []),
+          {
+            id: suppressionId,
+            ruleId: violation.ruleId,
+            symbolInstanceId: violation.symbolInstanceId,
+            pinNumber: violation.pinNumber,
+            netRoot: violation.netRoot,
+          },
+        ],
+      }));
+    },
+    clearErcSuppressions: () => {
+      console.info("[useEditorState] Clearing ERC suppressions");
+
+      applyProjectUpdate("clearErcSuppressions", (currentProject) => ({
+        ...currentProject,
+        ercSuppressions: [],
+      }));
     },
     deleteSelected: () => {
       console.info("[useEditorState] Deleting selected objects", { selectedIds, selectedWireNode });

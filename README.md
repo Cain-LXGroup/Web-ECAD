@@ -2,6 +2,19 @@
 
 Tablet-first, offline-capable schematic templating PWA built with Vite, React, and IndexedDB.
 
+## License
+
+This project is distributed under GPL-3.0. See [`LICENSE`](./LICENSE).
+
+## KiCad compatibility and provenance
+
+KiCad compatibility is a core project objective. When logic is ported or adapted
+from KiCad references, provenance should be tracked in:
+
+- [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)
+- [`docs/KICAD_PROVENANCE.md`](./docs/KICAD_PROVENANCE.md)
+- PR-level provenance notes (see [`CONTRIBUTING.md`](./CONTRIBUTING.md))
+
 ## Roadmap
 
 Tablet feel (undo, pencil modes, gestures) is shipped. Current work: multi-select, clipboard, favourites, global/sheet labels, multiple sheets, net highlight, and auto-save. See **[ROADMAP.md](./ROADMAP.md)**.

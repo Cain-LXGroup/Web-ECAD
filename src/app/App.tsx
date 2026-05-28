@@ -9,6 +9,7 @@ import { EditorSettingsPanel } from "../components/EditorSettingsPanel";
 import { SchematicColorsPanel } from "../components/SchematicColorsPanel";
 import { UndoRedoRail } from "../components/UndoRedoRail";
 import { InspectorPanel } from "../components/InspectorPanel";
+import { ErcPanel } from "../components/ErcPanel";
 import { ExportPanel } from "../components/ExportPanel";
 import { ImportPanel, type ImportPanelStatus } from "../components/ImportPanel";
 import { ProjectPanel } from "../components/ProjectPanel";
@@ -25,6 +26,7 @@ import { BubbleButton } from "../components/ui/BubbleButton";
 import { chromeBody, chromeTitle } from "../components/ui/uiStyles";
 import { SchematicCanvas, type SchematicCanvasHandle } from "../editor/SchematicCanvas";
 import { computeNetHighlight, type NetHighlightSet } from "../editor/netHighlight";
+import { computeErcViolations } from "../editor/erc";
 import { FavouritesDockStrip } from "../components/FavouritesDockStrip";
 import { createDefaultSheet, normalizeProject } from "../editor/projectSheets";
 import { DEFAULT_GRID_SIZE } from "../editor/snapping";
@@ -168,6 +170,11 @@ function App() {
     emptyNetHighlight,
     symbolIndex,
   ]);
+
+  const ercViolations = useMemo(
+    () => computeErcViolations(editor.state.project, symbolIndex),
+    [editor.state.project, symbolIndex],
+  );
 
   useEffect(() => {
     console.info("[App] Scheduling debounced auto-save", { projectId: editor.state.project.id });
@@ -927,6 +934,20 @@ function App() {
         selectedCanvasObject={selectedCanvasObject}
         netHighlightEnabled={appSettings.netHighlightEnabled}
         onNetHighlightEnabledChange={appSettings.setNetHighlightEnabled}
+      />
+
+      <ErcPanel
+        violations={ercViolations}
+        onSelectViolation={(violation) => {
+          if (violation.symbolInstanceId) {
+            editor.selectObject(violation.symbolInstanceId);
+            setStatusMessage("Selected symbol related to ERC marker.");
+          }
+        }}
+        onSuppressViolation={(violation) => {
+          editor.suppressErcViolation(violation);
+          setStatusMessage("Suppressed ERC marker for this target.");
+        }}
       />
 
       <GlassPanel>

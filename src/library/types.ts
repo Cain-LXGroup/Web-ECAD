@@ -168,6 +168,31 @@ export type NetLabel = {
   wireId?: string;
 };
 
+export type ErcSeverity = "error" | "warning";
+
+export type ErcRuleId =
+  | "unconnected-non-passive-pin"
+  | "conflicting-output-pins"
+  | "missing-value-field";
+
+export type ErcViolation = {
+  id: string;
+  ruleId: ErcRuleId;
+  severity: ErcSeverity;
+  message: string;
+  symbolInstanceId?: string;
+  pinNumber?: string;
+  netRoot?: string;
+};
+
+export type ErcSuppression = {
+  id: string;
+  ruleId: ErcRuleId;
+  symbolInstanceId?: string;
+  pinNumber?: string;
+  netRoot?: string;
+};
+
 export type SchematicSheet = {
   id: string;
   name: string;
@@ -195,6 +220,7 @@ export type SchematicProject = {
   wires: Wire[];
   netLabels: NetLabel[];
   textNotes: TextNote[];
+  ercSuppressions?: ErcSuppression[];
   gridSize: number;
   sheets: SchematicSheet[];
   activeSheetId?: string;
