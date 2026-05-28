@@ -6,12 +6,11 @@ import type {
   SchematicProject,
   SymbolInstance,
 } from "../library/types";
+import { formatPinElectricalTypeLabel, isOutputLikeElectricalType } from "../library/pinElectricalType";
 import {
-  formatPinElectricalTypeLabel,
   getUnconnectedPinErcCheck,
-  isOutputLikeElectricalType,
   isUnconnectedPinRuleId,
-} from "../library/pinElectricalType";
+} from "./pinElectricalErc";
 import type { ElectricalPinState } from "./electricalModel";
 import { buildElectricalModel } from "./electricalModel";
 

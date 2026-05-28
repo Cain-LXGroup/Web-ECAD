@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+  <path fill="none" stroke="#545454" stroke-width="1.8" stroke-linejoin="round" d="M12 3 20 7.5V16.5L12 21 4 16.5V7.5Z"/>
+  <path fill="none" stroke="#545454" stroke-width="2" stroke-linecap="round" d="M3 18h18"/>
+  <text x="8.2" y="14.8" fill="#545454" font-family="Noto Sans,sans-serif" font-size="9" font-weight="600">G</text>
+</svg>

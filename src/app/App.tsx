@@ -106,7 +106,6 @@ function App() {
   );
   const [isLibraryDrawerOpen, setIsLibraryDrawerOpen] = useState(false);
   const [isInspectorDrawerOpen, setIsInspectorDrawerOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<SchematicCanvasHandle | null>(null);
   const [contextMenuTarget, setContextMenuTarget] = useState<CanvasContextMenuTarget | null>(null);
   const [isFavouritesDockOpen, setIsFavouritesDockOpen] = useState(false);
@@ -304,7 +303,6 @@ function App() {
     () => projects.find((project) => project.id === activeProjectId),
     [activeProjectId, projects],
   );
-  const selectedLibrarySymbol = selectedSymbolId ? symbolIndex[selectedSymbolId] : undefined;
   const favoriteSymbols = useMemo(
     () => allSymbols.filter((symbol) => appSettings.starredSymbolIds.includes(symbol.id)),
     [allSymbols, appSettings.starredSymbolIds],
@@ -452,8 +450,6 @@ function App() {
       } catch (error) {
         console.error("[App] Failed to initialize application shell", error);
         setStatusMessage("Unable to load local data. Check the console for more details.");
-      } finally {
-        setIsLoading(false);
       }
     };
 
@@ -901,7 +897,7 @@ function App() {
         },
         {
           id: "done-symbol-text-edit",
-          icon: "edit" as const,
+          icon: "done" as const,
           label: "Done editing symbol text",
           variant: "primary" as const,
           onClick: () => {
@@ -1055,17 +1051,6 @@ function App() {
         }}
       />
 
-      <GlassPanel>
-        <h2 className="text-base font-semibold text-white">Placement</h2>
-        <p className="mt-2 text-sm text-slate-400">
-          {editor.state.placingSymbolId
-            ? `Ready to place ${symbolIndex[editor.state.placingSymbolId]?.name ?? "selected symbol"}.`
-            : selectedLibrarySymbol
-              ? `Selected library symbol: ${selectedLibrarySymbol.name}`
-              : "Choose a library symbol, then tap Place."}
-        </p>
-      </GlassPanel>
-
       {editor.state.activeTool === "label-global" || editor.state.activeTool === "label-sheet" ? (
         <GlassPanel>
           <h2 className={chromeTitle}>Net Label Scope</h2>
@@ -1152,61 +1137,6 @@ function App() {
         </GlassPanel>
       ) : null}
 
-      <GlassPanel className="hidden xl:block">
-        <h2 className={chromeTitle}>Wire Draft</h2>
-        <div className="mt-3 grid gap-3">
-          <BubbleButton
-            variant="primary"
-            disabled={!editor.state.wireDraft || editor.state.wireDraft.points.length < 2}
-            onClick={() => {
-              editor.finishWire();
-              setStatusMessage("Finished the current wire.");
-            }}
-          >
-            Place Wire
-          </BubbleButton>
-          <BubbleButton
-            variant="secondary"
-            disabled={!editor.state.wireDraft}
-            onClick={() => {
-              editor.cancelWire();
-              setStatusMessage("Cancelled the current wire draft.");
-            }}
-          >
-            Cancel Wire
-          </BubbleButton>
-        </div>
-      </GlassPanel>
-
-      <GlassPanel>
-        <h2 className={chromeTitle}>Local Data Status</h2>
-        <dl className="mt-4 space-y-3 text-sm text-[var(--chrome-text)]">
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-[var(--chrome-faint)]">Symbols</dt>
-            <dd>{allSymbols.length}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-[var(--chrome-faint)]">Projects</dt>
-            <dd>{projects.length}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-[var(--chrome-faint)]">Selected Symbol</dt>
-            <dd>{selectedSymbolId ?? "None"}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-[var(--chrome-faint)]">Canvas Symbols</dt>
-            <dd>{editor.state.project.symbols.length}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-[var(--chrome-faint)]">Wire Mode</dt>
-            <dd>{editor.state.wireRoutingMode}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="text-slate-500">Shell</dt>
-            <dd>{isLoading ? "Loading" : "Ready"}</dd>
-          </div>
-        </dl>
-      </GlassPanel>
     </>
   );
 

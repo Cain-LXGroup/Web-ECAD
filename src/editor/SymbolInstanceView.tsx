@@ -199,9 +199,12 @@ const renderEditableSymbolText = (
   const isSelected =
     options.selectedSymbolText && symbolTextTargetsMatch(options.selectedSymbolText, target);
   const displayFill = layout.placeholder ? schematicColorVar("pinNumber") : fill;
+  const rotationTransform = layout.rotation
+    ? `rotate(${layout.rotation} ${layout.x} ${layout.y})`
+    : undefined;
 
   return (
-    <g key={key}>
+    <g key={key} transform={rotationTransform}>
       {isSelected ? (
         <rect
           x={hitRect.x - 4}
@@ -225,7 +228,6 @@ const renderEditableSymbolText = (
         fontWeight={target.type === "ref" || target.type === "value" ? 700 : undefined}
         dominantBaseline="middle"
         textAnchor={layout.textAnchor}
-        transform={layout.rotation ? `rotate(${layout.rotation} ${layout.x} ${layout.y})` : undefined}
         pointerEvents={options.symbolTextEditMode ? "none" : undefined}
         opacity={layout.placeholder ? 0.55 : 1}
       >

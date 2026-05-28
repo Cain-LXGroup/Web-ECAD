@@ -3,12 +3,12 @@ import type { BottomToolbarAction } from "../../app/routes";
 const KICAD_ICON_MAP: Record<BottomToolbarAction, string> = {
   select: "cursor",
   wire: "add_line",
-  bus: "add_line",
-  "label-global": "add_label",
-  "label-sheet": "add_label",
-  "label-hierarchical": "add_label",
-  "label-bus": "add_label",
-  "sheet-pin": "add_line",
+  bus: "bus",
+  "label-global": "label_global",
+  "label-sheet": "label_sheet",
+  "label-hierarchical": "label_hierarchical",
+  "label-bus": "label_bus",
+  "sheet-pin": "sheet_pin",
   text: "text",
 };
 
@@ -59,15 +59,16 @@ export const KicadToolIcon = ({
 
 export const getKicadToolLabel = (tool: BottomToolbarAction): string => KICAD_ICON_LABELS[tool];
 
-export type ContextActionIcon = "rotate" | "mirror" | "delete" | "zoom" | "edit" | "text";
+export type ContextActionIcon = "rotate" | "mirror" | "delete" | "zoom" | "edit" | "text" | "done";
 
 const CONTEXT_ICON_MAP: Record<ContextActionIcon, string> = {
   rotate: "rotate_cw",
   mirror: "mirror_v",
   delete: "delete_cursor",
   zoom: "move",
-  edit: "text",
+  edit: "edit_pencil",
   text: "text",
+  done: "check",
 };
 
 const CONTEXT_ICON_LABELS: Record<ContextActionIcon, string> = {
@@ -75,8 +76,9 @@ const CONTEXT_ICON_LABELS: Record<ContextActionIcon, string> = {
   mirror: "Mirror",
   delete: "Delete",
   zoom: "Zoom to selection",
-  edit: "Edit symbol text",
+  edit: "Edit text",
   text: "Add text",
+  done: "Done editing",
 };
 
 type KicadContextIconProps = {
