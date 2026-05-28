@@ -4,6 +4,7 @@ export type SchematicColorRole =
   | "wire"
   | "wireSelected"
   | "netHighlight"
+  | "ercMarker"
   | "junction"
   | "junctionStroke"
   | "bodyStroke"
@@ -32,6 +33,7 @@ export const SCHEMATIC_COLOR_ROLES: SchematicColorRole[] = [
   "wire",
   "wireSelected",
   "netHighlight",
+  "ercMarker",
   "junction",
   "junctionStroke",
   "bodyStroke",
@@ -59,6 +61,7 @@ export const SCHEMATIC_COLOR_LABELS: Record<SchematicColorRole, string> = {
   wire: "Wire stroke",
   wireSelected: "Wire (selected)",
   netHighlight: "Net highlight",
+  ercMarker: "ERC marker",
   junction: "Junction fill",
   junctionStroke: "Junction outline",
   bodyStroke: "Symbol outline",
@@ -98,6 +101,7 @@ export const DEFAULT_SCHEMATIC_COLORS_DARK: SchematicColors = {
   wire: "#88c070",
   wireSelected: "#9ad4ff",
   netHighlight: "#facc15",
+  ercMarker: "#fb7185",
   junction: "#88c070",
   junctionStroke: "#202228",
   bodyStroke: "#c07070",
@@ -126,6 +130,7 @@ export const DEFAULT_SCHEMATIC_COLORS_LIGHT: SchematicColors = {
   wire: "#15803d",
   wireSelected: "#0369a1",
   netHighlight: "#ca8a04",
+  ercMarker: "#e11d48",
   junction: "#15803d",
   junctionStroke: "#f1f5f9",
   bodyStroke: "#b91c1c",

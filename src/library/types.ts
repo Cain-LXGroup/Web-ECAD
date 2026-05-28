@@ -171,18 +171,43 @@ export type NetLabel = {
 export type ErcSeverity = "error" | "warning";
 
 export type ErcRuleId =
+  | "unconnected-power-input-pin"
+  | "unconnected-output-pin"
+  | "unconnected-input-pin"
+  | "unconnected-bidirectional-pin"
+  | "unconnected-unspecified-pin"
   | "unconnected-non-passive-pin"
   | "conflicting-output-pins"
   | "missing-value-field";
+
+export type ErcConflictingPinRef = {
+  symbolInstanceId: string;
+  symbolRef: string;
+  pinNumber: string;
+  pinName: string;
+  electricalTypeLabel: string;
+};
 
 export type ErcViolation = {
   id: string;
   ruleId: ErcRuleId;
   severity: ErcSeverity;
   message: string;
+  /** Short title for list rows, e.g. "MOD1 · pin 32". */
+  title: string;
+  /** Actionable detail shown under the title. */
+  detail: string;
   symbolInstanceId?: string;
+  symbolRef?: string;
+  symbolValue?: string;
+  libraryName?: string;
   pinNumber?: string;
+  pinName?: string;
+  electricalType?: string;
+  electricalTypeLabel?: string;
+  guidance?: string;
   netRoot?: string;
+  conflictingPins?: ErcConflictingPinRef[];
 };
 
 export type ErcSuppression = {

@@ -20,7 +20,7 @@ import { DEFAULT_GRID_SIZE } from "./snapping";
 import { SymbolInstanceView } from "./SymbolInstanceView";
 import { DEFAULT_SCHEMATIC_TEXT_SIZE } from "./schematicTextSizing";
 import type { SymbolTextSelection } from "../library/types";
-import type { Tool, WireDraftState } from "./useEditorState";
+import type { ErcPinFocus, Tool, WireDraftState } from "./useEditorState";
 import { getWireJunctionPoints } from "./wireRouting";
 import { schematicColorVar } from "../theme/schematicTheme";
 import { WireNodeHandles, type WireNodeSelection } from "./WireNodeHandles";
@@ -82,6 +82,7 @@ type SchematicCanvasProps = {
   selectedIds: string[];
   netHighlight?: NetHighlightSet;
   selectedWireNode?: WireNodeSelection;
+  ercPinFocus?: ErcPinFocus;
   symbolPinTextEditInstanceId?: string;
   selectedSymbolText?: SymbolTextSelection;
   activeTool: Tool;
@@ -161,6 +162,7 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
     selectedIds,
     netHighlight,
     selectedWireNode,
+    ercPinFocus,
     symbolPinTextEditInstanceId,
     selectedSymbolText,
     activeTool,
@@ -1158,6 +1160,9 @@ export const SchematicCanvas = forwardRef<SchematicCanvasHandle, SchematicCanvas
               }
               netHighlighted={
                 netHighlight ? isNetHighlighted(netHighlight, "symbol", instance.id) : false
+              }
+              highlightedPinNumber={
+                ercPinFocus?.symbolInstanceId === instance.id ? ercPinFocus.pinNumber : undefined
               }
               onPointerDown={(event) => beginSelectionDrag(instance.id, event)}
               onLongPress={handleObjectLongPress(instance.id, "symbol")}

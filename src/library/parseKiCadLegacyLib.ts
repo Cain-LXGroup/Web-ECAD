@@ -1,3 +1,4 @@
+import { normalizePinElectricalType } from "./pinElectricalType";
 import { getPinBodyPoint } from "./symbolGeometry";
 import { buildSymbolId } from "./normalizeSymbol";
 import type {
@@ -205,7 +206,7 @@ const parsePin = (args: string[]): SymbolPin | null => {
   const y = parseNumber(args[3]);
   const length = parseNumber(args[4]);
   const orientation = parseOrientation(args[5]);
-  const electricalType = args[9];
+  const electricalType = normalizePinElectricalType(args[9]);
   const shape = args[10] ?? "";
 
   return {

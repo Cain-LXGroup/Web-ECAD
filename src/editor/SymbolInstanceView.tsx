@@ -167,6 +167,7 @@ type SymbolInstanceViewProps = {
   instance: SymbolInstance;
   selected: boolean;
   netHighlighted?: boolean;
+  highlightedPinNumber?: string;
   schematicTextSize?: number;
   showPinLabels?: boolean;
   showFieldLabels?: boolean;
@@ -254,6 +255,7 @@ export const SymbolInstanceView = ({
   instance,
   selected,
   netHighlighted = false,
+  highlightedPinNumber,
   schematicTextSize = DEFAULT_SCHEMATIC_TEXT_SIZE,
   showPinLabels = true,
   showFieldLabels = true,
@@ -269,6 +271,7 @@ export const SymbolInstanceView = ({
     symbolName: symbol.name,
     selected,
     netHighlighted,
+    highlightedPinNumber,
   });
 
   const boundsWidth = symbol.bounds.maxX - symbol.bounds.minX;
@@ -348,8 +351,21 @@ export const SymbolInstanceView = ({
           .map((pin) => {
             const bodyPoint = getPinBodyPoint(pin);
 
+            const isErcHighlighted = highlightedPinNumber === pin.number;
+
             return (
               <g key={`${instance.id}-pin-${pin.number}`}>
+                {isErcHighlighted ? (
+                  <circle
+                    cx={pin.x}
+                    cy={pin.y}
+                    r={28}
+                    fill="none"
+                    stroke={schematicColorVar("ercMarker")}
+                    strokeWidth={4}
+                    pointerEvents="none"
+                  />
+                ) : null}
                 <line
                   x1={pin.x}
                   y1={pin.y}
@@ -359,7 +375,13 @@ export const SymbolInstanceView = ({
                   strokeWidth={2}
                   strokeLinecap="round"
                 />
-                <circle cx={pin.x} cy={pin.y} r={6} fill={schematicColorVar("pinConnection")} pointerEvents="none" />
+                <circle
+                  cx={pin.x}
+                  cy={pin.y}
+                  r={6}
+                  fill={schematicColorVar(isErcHighlighted ? "ercMarker" : "pinConnection")}
+                  pointerEvents="none"
+                />
                 {onPinPointerDown ? (
                   <circle
                     cx={pin.x}

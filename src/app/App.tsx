@@ -938,15 +938,23 @@ function App() {
 
       <ErcPanel
         violations={ercViolations}
+        suppressionCount={editor.state.project.ercSuppressions?.length ?? 0}
         onSelectViolation={(violation) => {
-          if (violation.symbolInstanceId) {
-            editor.selectObject(violation.symbolInstanceId);
-            setStatusMessage("Selected symbol related to ERC marker.");
-          }
+          editor.focusErcViolation(violation, symbolIndex);
+          const label = violation.symbolRef ?? violation.title;
+          setStatusMessage(
+            violation.pinNumber
+              ? `Focused ${label} pin ${violation.pinNumber} for ERC.`
+              : `Focused ${label} for ERC.`,
+          );
         }}
         onSuppressViolation={(violation) => {
           editor.suppressErcViolation(violation);
           setStatusMessage("Suppressed ERC marker for this target.");
+        }}
+        onClearSuppressions={() => {
+          editor.clearErcSuppressions();
+          setStatusMessage("Cleared all ERC suppressions.");
         }}
       />
 
@@ -1313,6 +1321,7 @@ function App() {
             selectedIds={editor.state.selectedIds}
             netHighlight={netHighlight}
             selectedWireNode={editor.state.selectedWireNode}
+            ercPinFocus={editor.state.ercPinFocus}
             symbolPinTextEditInstanceId={editor.state.symbolPinTextEditInstanceId}
             selectedSymbolText={editor.state.selectedSymbolText}
             activeTool={editor.state.activeTool}

@@ -38,7 +38,7 @@ import {
   type EditorHistorySnapshot,
 } from "./editorHistory";
 import { resolveLabelAnchor, syncAnchoredLabels } from "./labelAnchoring";
-import { getProjectBounds, getSelectionBounds } from "./projectBounds";
+import { getPinFocusBounds, getProjectBounds, getSelectionBounds } from "./projectBounds";
 import { DEFAULT_GRID_SIZE, snapPoint } from "./snapping";
 import { normalizeRotation, toggleMirror } from "./transforms";
 import { getViewportForBounds } from "./viewportFitting";
@@ -71,10 +71,16 @@ export type WireDraftState = {
 
 export type SelectionMode = "replace" | "add" | "toggle";
 
+export type ErcPinFocus = {
+  symbolInstanceId: string;
+  pinNumber: string;
+};
+
 export type EditorState = {
   project: SchematicProject;
   selectedIds: string[];
   selectedWireNode?: WireNodeSelection;
+  ercPinFocus?: ErcPinFocus;
   symbolPinTextEditInstanceId?: string;
   selectedSymbolText?: SymbolTextSelection;
   activeTool: Tool;
@@ -141,6 +147,7 @@ export const useEditorState = (
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const clipboardRef = useRef<ClipboardPayload | null>(null);
   const [selectedWireNode, setSelectedWireNode] = useState<WireNodeSelection | undefined>(undefined);
+  const [ercPinFocus, setErcPinFocus] = useState<ErcPinFocus | undefined>(undefined);
   const [symbolPinTextEditInstanceId, setSymbolPinTextEditInstanceId] = useState<string | undefined>(
     undefined,
   );
@@ -279,6 +286,7 @@ export const useEditorState = (
     setActiveSheetId(getActiveSheetId(nextProject));
     setSelectedIds([]);
     setSelectedWireNode(undefined);
+    setErcPinFocus(undefined);
     setSymbolPinTextEditInstanceId(undefined);
     setSelectedSymbolText(undefined);
     setWireDraft(undefined);
@@ -298,6 +306,7 @@ export const useEditorState = (
       project: sheetView,
       selectedIds,
       selectedWireNode,
+      ercPinFocus,
       symbolPinTextEditInstanceId,
       selectedSymbolText,
       activeTool,
@@ -318,6 +327,7 @@ export const useEditorState = (
       selectedIds,
       selectedSymbolText,
       selectedWireNode,
+      ercPinFocus,
       sheetView,
       symbolPinTextEditInstanceId,
       wireDraft,
@@ -720,6 +730,7 @@ export const useEditorState = (
       console.info("[useEditorState] Selecting object", { id, mode });
 
       setSelectedWireNode(undefined);
+      setErcPinFocus(undefined);
       setSelectedSymbolText(undefined);
 
       if (mode === "replace") {
@@ -745,6 +756,7 @@ export const useEditorState = (
       console.info("[useEditorState] Clearing selection");
       setSelectedIds([]);
       setSelectedWireNode(undefined);
+      setErcPinFocus(undefined);
       setSymbolPinTextEditInstanceId(undefined);
       setSelectedSymbolText(undefined);
     },
@@ -1184,6 +1196,64 @@ export const useEditorState = (
         ...currentProject,
         ercSuppressions: [],
       }));
+    },
+    focusErcViolation: (
+      violation: ErcViolation,
+      contentSymbolIndex: Record<string, LibrarySymbol>,
+    ) => {
+      console.info("[useEditorState] Focusing ERC violation", {
+        violationId: violation.id,
+        ruleId: violation.ruleId,
+      });
+
+      const sheetProject = getProjectView(project, activeSheetId);
+      const targetPin =
+        violation.symbolInstanceId && violation.pinNumber
+          ? {
+              symbolInstanceId: violation.symbolInstanceId,
+              pinNumber: violation.pinNumber,
+            }
+          : violation.conflictingPins?.[0]
+            ? {
+                symbolInstanceId: violation.conflictingPins[0].symbolInstanceId,
+                pinNumber: violation.conflictingPins[0].pinNumber,
+              }
+            : undefined;
+
+      const targetSymbolId =
+        violation.symbolInstanceId ?? violation.conflictingPins?.[0]?.symbolInstanceId;
+
+      if (targetSymbolId) {
+        setSelectedIds([targetSymbolId]);
+        setSelectedWireNode(undefined);
+        setSelectedSymbolText(undefined);
+        setSymbolPinTextEditInstanceId(undefined);
+      }
+
+      if (targetPin) {
+        setErcPinFocus({
+          symbolInstanceId: targetPin.symbolInstanceId,
+          pinNumber: targetPin.pinNumber,
+        });
+
+        const bounds = getPinFocusBounds(sheetProject, contentSymbolIndex, targetPin);
+        if (bounds) {
+          const viewport = getViewportForBounds(bounds, 1.35);
+          setPanState(viewport.pan);
+          setZoomState(viewport.zoom);
+        }
+        return;
+      }
+
+      setErcPinFocus(undefined);
+      if (targetSymbolId) {
+        const bounds = getSelectionBounds(sheetProject, contentSymbolIndex, [targetSymbolId]);
+        if (bounds) {
+          const viewport = getViewportForBounds(bounds);
+          setPanState(viewport.pan);
+          setZoomState(viewport.zoom);
+        }
+      }
     },
     deleteSelected: () => {
       console.info("[useEditorState] Deleting selected objects", { selectedIds, selectedWireNode });

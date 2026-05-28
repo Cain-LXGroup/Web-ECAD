@@ -1,4 +1,5 @@
-import type { LibrarySymbol, Point, SchematicProject } from "../library/types";
+import type { LibrarySymbol, Point, SchematicProject, WireConnection } from "../library/types";
+import { resolveWireConnectionPoint } from "./wireRouting";
 
 export type ProjectBounds = {
   minX: number;
@@ -118,4 +119,25 @@ export const getSelectionBounds = (
   };
 
   return getProjectBounds(selectedProject, symbolIndex, padding);
+};
+
+export const getPinFocusBounds = (
+  project: SchematicProject,
+  symbolIndex: Record<string, LibrarySymbol>,
+  connection: WireConnection,
+  padding = 180,
+): ProjectBounds | null => {
+  console.info("[projectBounds] Calculating pin focus bounds", { connection, padding });
+
+  const anchor = resolveWireConnectionPoint(project, symbolIndex, connection);
+  if (!anchor) {
+    return null;
+  }
+
+  return {
+    minX: anchor.x - padding,
+    minY: anchor.y - padding,
+    maxX: anchor.x + padding,
+    maxY: anchor.y + padding,
+  };
 };

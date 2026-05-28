@@ -181,6 +181,10 @@ const parsePin = (expr: SExpr): SymbolPin | null => {
   const nameExpr = nameLists[0];
   const numberExpr = numberLists[0];
   const shape = sExprAtom(expr, 3);
+  const pintypeLists = findChildLists(expr, "pintype");
+  const positionalType = sExprAtom(expr, 1);
+  const electricalType =
+    pintypeLists.length > 0 ? sExprAtom(pintypeLists[0], 1) : positionalType;
 
   return {
     number: sExprAtom(numberExpr, 1),
@@ -189,7 +193,7 @@ const parsePin = (expr: SExpr): SymbolPin | null => {
     y: scale(parseNumber(sExprAtom(at, 2))),
     length,
     orientation,
-    electricalType: sExprAtom(expr, 1),
+    electricalType,
     hidden:
       shape.toLowerCase() === "invisible" || hasHideEffect(nameExpr) || hasHideEffect(numberExpr),
   };
